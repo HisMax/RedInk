@@ -271,13 +271,13 @@
             />
             <span class="form-hint" v-if="editingImageProvider && hasExistingApiKey(imageProviderForm)">已配置 API Key，留空表示不修改</span>
           </div>
-          <div class="form-group" v-if="imageProviderForm.type === 'image_api'">
+          <div class="form-group" v-if="['image_api', 'google_genai'].includes(imageProviderForm.type)">
             <label>Base URL</label>
             <input
               type="text"
               class="form-input"
               v-model="imageProviderForm.base_url"
-              placeholder="例如: https://api.openai.com"
+              placeholder="例如: https://generativelanguage.googleapis.com"
             />
           </div>
           <div class="form-group">

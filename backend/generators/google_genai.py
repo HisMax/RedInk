@@ -63,10 +63,26 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
             )
 
         # 初始化客户端
-        self.client = genai.Client(
-            vertexai=True,
-            api_key=self.api_key,
-        )
+        client_kwargs = {
+            "api_key": self.api_key,
+        }
+
+        # 记录是否使用 vertexai 模式
+        self.is_vertexai = True
+
+        # 如果有 base_url，则配置 http_options 并禁用 vertexai (通常代理使用标准 Gemini API 路径)
+        if hasattr(self, 'config') and self.config.get('base_url'):
+            client_kwargs["http_options"] = {
+                "base_url": self.config['base_url'],
+                "api_version": "v1beta"
+            }
+            client_kwargs["vertexai"] = False
+            self.is_vertexai = False
+        else:
+            # 默认保持原有行为
+            client_kwargs["vertexai"] = True
+
+        self.client = genai.Client(**client_kwargs)
 
         # 默认安全设置
         self.safety_settings = [
@@ -141,16 +157,21 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
             )
         ]
 
+        image_config_kwargs = {
+            "aspect_ratio": aspect_ratio,
+        }
+
+        # 只有在 Vertex AI 模式下才支持 output_mime_type
+        if self.is_vertexai:
+            image_config_kwargs["output_mime_type"] = "image/png"
+
         generate_content_config = types.GenerateContentConfig(
             temperature=temperature,
             top_p=0.95,
             max_output_tokens=32768,
             response_modalities=["TEXT", "IMAGE"],
             safety_settings=self.safety_settings,
-            image_config=types.ImageConfig(
-                aspect_ratio=aspect_ratio,
-                output_mime_type="image/png",
-            ),
+            image_config=types.ImageConfig(**image_config_kwargs),
         )
 
         image_data = None
