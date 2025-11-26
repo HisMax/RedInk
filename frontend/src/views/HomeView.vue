@@ -102,7 +102,7 @@
     <div class="content-section">
     <!-- Dashboard Grid -->
     <div class="dashboard-grid">
-      
+
       <!-- Recent Activity (Mockup) -->
       <div class="card feature-card">
         <div class="card-header">
@@ -114,7 +114,7 @@
           </div>
           <button class="btn-text" @click="router.push('/history')">全部记录</button>
         </div>
-        
+
         <div v-if="recentRecords.length > 0" class="recent-list">
           <div v-for="record in recentRecords" :key="record.id" class="recent-item" @click="loadRecord(record)">
             <div class="recent-icon">
@@ -180,6 +180,16 @@
         </div>
       </div>
     </div>
+
+    <!-- 首页页脚版权 -->
+    <footer class="home-footer">
+      <div class="footer-copyright">
+        © 2025 <a href="https://github.com/HisMax/RedInk" target="_blank" rel="noopener noreferrer">RedInk</a> by 默子 (Histone)
+      </div>
+      <div class="footer-license-info">
+        Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>
+      </div>
+    </footer>
     </div>
 
     <div v-if="error" class="error-toast">
@@ -889,5 +899,48 @@ onUnmounted(() => {
   .scenarios-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* 首页页脚样式 */
+.home-footer {
+  margin-top: 48px;
+  padding: 32px 0 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.footer-copyright {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.footer-copyright a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.footer-copyright a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.footer-license-info {
+  font-size: 13px;
+  color: #999;
+}
+
+.footer-license-info a {
+  color: #777;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.footer-license-info a:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 </style>

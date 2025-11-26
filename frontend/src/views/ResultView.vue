@@ -25,10 +25,10 @@
             style="position: relative; aspect-ratio: 3/4; overflow: hidden; cursor: pointer;" 
             @click="viewImage(image.url)"
           >
-            <img 
-              :src="image.url + '?t=' + new Date().getTime()" 
-              :alt="`第 ${image.index + 1} 页`" 
-              style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s;" 
+            <img
+              :src="image.url"
+              :alt="`第 ${image.index + 1} 页`"
+              style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s;"
             />
             <!-- Regenerating Overlay -->
             <div v-if="regeneratingIndex === image.index" style="position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10;">
@@ -88,7 +88,8 @@ const store = useGeneratorStore()
 const regeneratingIndex = ref<number | null>(null)
 
 const viewImage = (url: string) => {
-  window.open(url, '_blank')
+  const baseUrl = url.split('?')[0]
+  window.open(baseUrl + '?thumbnail=false', '_blank')
 }
 
 const startOver = () => {
@@ -99,27 +100,25 @@ const startOver = () => {
 const downloadOne = (image: any) => {
   if (image.url) {
     const link = document.createElement('a')
-    // 使用原图
-    link.href = image.url.replace('?thumbnail=true', '?thumbnail=false')
+    const baseUrl = image.url.split('?')[0]
+    link.href = baseUrl + '?thumbnail=false'
     link.download = `rednote_page_${image.index + 1}.png`
     link.click()
   }
 }
 
 const downloadAll = () => {
-  // 如果有历史记录ID，使用ZIP下载
   if (store.recordId) {
     const link = document.createElement('a')
     link.href = `/api/history/${store.recordId}/download`
     link.click()
   } else {
-    // 降级方案：逐个下载（带原图参数）
     store.images.forEach((image, index) => {
       if (image.url) {
         setTimeout(() => {
           const link = document.createElement('a')
-          // 使用原图
-          link.href = image.url.replace('?thumbnail=true', '?thumbnail=false')
+          const baseUrl = image.url.split('?')[0]
+          link.href = baseUrl + '?thumbnail=false'
           link.download = `rednote_page_${image.index + 1}.png`
           link.click()
         }, index * 300)
@@ -130,7 +129,7 @@ const downloadAll = () => {
 
 const handleRegenerate = async (image: any) => {
   if (!store.taskId || regeneratingIndex.value !== null) return
-  
+
   regeneratingIndex.value = image.index
   try {
     // Find the page content from outline
@@ -140,11 +139,15 @@ const handleRegenerate = async (image: any) => {
        return
     }
 
-    const result = await regenerateImage(store.taskId, pageContent)
+    // 构建上下文信息
+    const context = {
+      fullOutline: store.outline.raw || '',
+      userTopic: store.topic || ''
+    }
+
+    const result = await regenerateImage(store.taskId, pageContent, true, context)
     if (result.success && result.image_url) {
-       // Update the store image url to force refresh (add timestamp in template)
-       // We need to make sure the store updates reactivity
-       const newUrl = `/api/images/${result.image_url}`
+       const newUrl = result.image_url
        store.updateImage(image.index, newUrl)
     } else {
        alert('重绘失败: ' + (result.error || '未知错误'))

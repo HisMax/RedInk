@@ -27,7 +27,7 @@ class OutlineService:
                     'type': 'google_gemini',
                     'model': 'gemini-2.0-flash-exp',
                     'temperature': 1.0,
-                    'max_output_tokens': 65535
+                    'max_output_tokens': 8000
                 }
             }
         }
@@ -100,7 +100,7 @@ class OutlineService:
 
             model = provider_config.get('model', 'gemini-2.0-flash-exp')
             temperature = provider_config.get('temperature', 1.0)
-            max_output_tokens = provider_config.get('max_output_tokens', 65535)
+            max_output_tokens = provider_config.get('max_output_tokens', 8000)
 
             outline_text = self.client.generate_text(
                 prompt=prompt,

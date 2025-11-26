@@ -383,7 +383,7 @@ const loadRecord = async (id: string) => {
           const filename = res.record!.images.generated[idx]
           return {
             index: idx,
-            url: filename ? `/api/images/${filename}` : '',
+            url: filename ? `/api/images/${res.record!.images.task_id}/${filename}` : '',
             status: filename ? 'done' : 'error',
             retryable: !filename
           }
@@ -439,21 +439,33 @@ async function regenerateHistoryImage(index: number) {
   const page = viewingRecord.value.outline.pages[index]
   if (!page) return
 
-  // 添加到正在重绘的集合
   regeneratingImages.value.add(index)
 
   try {
+    // 构建上下文信息
+    const context = {
+      fullOutline: viewingRecord.value.outline.raw || '',
+      userTopic: viewingRecord.value.title || ''
+    }
+
     const result = await apiRegenerateImage(
       viewingRecord.value.images.task_id,
       page,
-      true
+      true,
+      context
     )
 
     if (result.success && result.image_url) {
-      // 更新当前查看记录中的图片
-      viewingRecord.value.images.generated[index] = result.image_url.split('/').pop()
+      const filename = result.image_url.split('/').pop()
+      viewingRecord.value.images.generated[index] = filename
 
-      // 更新历史记录
+      const timestamp = Date.now()
+      const imgElements = document.querySelectorAll(`img[src*="${viewingRecord.value.images.task_id}/${filename}"]`)
+      imgElements.forEach(img => {
+        const baseUrl = (img as HTMLImageElement).src.split('?')[0]
+        ;(img as HTMLImageElement).src = `${baseUrl}?t=${timestamp}`
+      })
+
       await updateHistory(viewingRecord.value.id, {
         images: {
           task_id: viewingRecord.value.images.task_id,
@@ -461,7 +473,6 @@ async function regenerateHistoryImage(index: number) {
         }
       })
 
-      // 从正在重绘的集合中移除
       regeneratingImages.value.delete(index)
     } else {
       regeneratingImages.value.delete(index)

@@ -99,7 +99,7 @@ class TextChatClient:
         prompt: str,
         model: str = "gemini-3-pro-preview",
         temperature: float = 1.0,
-        max_output_tokens: int = 65535,
+        max_output_tokens: int = 8000,
         images: List[Union[bytes, str]] = None,
         system_prompt: str = None,
         **kwargs
@@ -188,13 +188,25 @@ class TextChatClient:
             )
 
 
-def get_text_chat_client(provider_config: dict) -> TextChatClient:
+def get_text_chat_client(provider_config: dict):
     """
-    获取 Text Chat 客户端实例
+    获取 Text Chat 客户端实例（根据 type 返回对应客户端）
 
     Args:
-        provider_config: 服务商配置字典，必须包含 api_key, 可选 base_url
+        provider_config: 服务商配置字典
+            - type: 'google_gemini' 或 'openai_compatible'
+            - api_key: API密钥
+            - base_url: API基础URL（仅 openai_compatible 需要）
+
+    Returns:
+        GenAIClient 或 TextChatClient
     """
+    provider_type = provider_config.get('type', 'openai_compatible')
     api_key = provider_config.get('api_key')
-    base_url = provider_config.get('base_url')
-    return TextChatClient(api_key=api_key, base_url=base_url)
+
+    if provider_type == 'google_gemini':
+        from .genai_client import GenAIClient
+        return GenAIClient(api_key=api_key)
+    else:
+        base_url = provider_config.get('base_url')
+        return TextChatClient(api_key=api_key, base_url=base_url)

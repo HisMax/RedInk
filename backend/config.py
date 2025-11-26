@@ -3,7 +3,6 @@ from pathlib import Path
 
 
 class Config:
-    # 基础配置（硬编码默认值，不再依赖环境变量）
     DEBUG = True
     HOST = '0.0.0.0'
     PORT = 12398

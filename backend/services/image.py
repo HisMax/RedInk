@@ -235,7 +235,8 @@ class ImageService:
             "failed": {},
             "cover_image": None,
             "full_outline": full_outline,
-            "user_images": compressed_user_images  # 保存压缩后的用户上传图片
+            "user_images": compressed_user_images,
+            "user_topic": user_topic
         }
 
         # ==================== 第一阶段：生成封面 ====================
@@ -490,7 +491,9 @@ class ImageService:
         self,
         task_id: str,
         page: Dict,
-        use_reference: bool = True
+        use_reference: bool = True,
+        full_outline: str = "",
+        user_topic: str = ""
     ) -> Dict[str, Any]:
         """
         重试生成单张图片
@@ -499,26 +502,50 @@ class ImageService:
             task_id: 任务ID
             page: 页面数据
             use_reference: 是否使用封面作为参考
+            full_outline: 完整大纲文本（从前端传入）
+            user_topic: 用户原始输入（从前端传入）
 
         Returns:
             生成结果
         """
-        # 设置当前任务目录
         self.current_task_dir = os.path.join(self.history_root_dir, task_id)
         os.makedirs(self.current_task_dir, exist_ok=True)
 
-        # 获取参考图
         reference_image = None
-        if use_reference and task_id in self._task_states:
-            reference_image = self._task_states[task_id].get("cover_image")
+        user_images = None
 
-        # 生成图片
+        # 首先尝试从任务状态中获取上下文
+        if task_id in self._task_states:
+            task_state = self._task_states[task_id]
+            if use_reference:
+                reference_image = task_state.get("cover_image")
+            # 如果没有传入上下文，则使用任务状态中的
+            if not full_outline:
+                full_outline = task_state.get("full_outline", "")
+            if not user_topic:
+                user_topic = task_state.get("user_topic", "")
+            user_images = task_state.get("user_images")
+
+        # 如果任务状态中没有封面图，尝试从文件系统加载
+        if use_reference and reference_image is None:
+            cover_path = os.path.join(self.current_task_dir, "0.png")
+            if os.path.exists(cover_path):
+                with open(cover_path, "rb") as f:
+                    cover_data = f.read()
+                # 压缩封面图到 200KB
+                reference_image = compress_image(cover_data, max_size_kb=200)
+
         index, success, filename, error = self._generate_single_image(
-            page, task_id, reference_image
+            page,
+            task_id,
+            reference_image,
+            0,
+            full_outline,
+            user_images,
+            user_topic
         )
 
         if success:
-            # 更新任务状态
             if task_id in self._task_states:
                 self._task_states[task_id]["generated"][index] = filename
                 if index in self._task_states[task_id]["failed"]:
@@ -646,7 +673,9 @@ class ImageService:
         self,
         task_id: str,
         page: Dict,
-        use_reference: bool = True
+        use_reference: bool = True,
+        full_outline: str = "",
+        user_topic: str = ""
     ) -> Dict[str, Any]:
         """
         重新生成图片（用户手动触发，即使成功的也可以重新生成）
@@ -655,11 +684,17 @@ class ImageService:
             task_id: 任务ID
             page: 页面数据
             use_reference: 是否使用封面作为参考
+            full_outline: 完整大纲文本
+            user_topic: 用户原始输入
 
         Returns:
             生成结果
         """
-        return self.retry_single_image(task_id, page, use_reference)
+        return self.retry_single_image(
+            task_id, page, use_reference,
+            full_outline=full_outline,
+            user_topic=user_topic
+        )
 
     def get_image_path(self, task_id: str, filename: str) -> str:
         """

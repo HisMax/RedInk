@@ -138,11 +138,17 @@ function retrySingleImage(index: number) {
   // 立即设置为重试状态
   store.setImageRetrying(index)
 
+  // 构建上下文信息
+  const context = {
+    fullOutline: store.outline.raw || '',
+    userTopic: store.topic || ''
+  }
+
   // 异步执行重绘，不阻塞
-  apiRegenerateImage(store.taskId, page)
+  apiRegenerateImage(store.taskId, page, true, context)
     .then(result => {
       if (result.success && result.image_url) {
-        store.updateProgress(index, 'done', result.image_url)
+        store.updateImage(index, result.image_url)
       } else {
         store.updateProgress(index, 'error', undefined, result.error)
       }
@@ -180,7 +186,7 @@ async function retryAllFailed() {
       // onComplete
       (event) => {
         if (event.image_url) {
-          store.updateProgress(event.index, 'done', event.image_url)
+          store.updateImage(event.index, event.image_url)
         }
       },
       // onError

@@ -209,6 +209,16 @@ export const useGeneratorStore = defineStore('generator', {
       }
     },
 
+    updateImage(index: number, newUrl: string) {
+      const image = this.images.find(img => img.index === index)
+      if (image) {
+        const timestamp = Date.now()
+        image.url = `${newUrl}?t=${timestamp}`
+        image.status = 'done'
+        delete image.error
+      }
+    },
+
     // 完成生成
     finishGeneration(taskId: string) {
       this.taskId = taskId

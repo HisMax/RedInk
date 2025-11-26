@@ -138,12 +138,18 @@ export async function retrySingleImage(
 export async function regenerateImage(
   taskId: string,
   page: Page,
-  useReference: boolean = true
+  useReference: boolean = true,
+  context?: {
+    fullOutline?: string
+    userTopic?: string
+  }
 ): Promise<{ success: boolean; index: number; image_url?: string; error?: string }> {
   const response = await axios.post(`${API_BASE_URL}/regenerate`, {
     task_id: taskId,
     page,
-    use_reference: useReference
+    use_reference: useReference,
+    full_outline: context?.fullOutline,
+    user_topic: context?.userTopic
   })
   return response.data
 }

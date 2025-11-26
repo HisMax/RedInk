@@ -67,9 +67,12 @@ class GenAIClient:
         prompt: str,
         model: str = "gemini-3-pro-preview",
         temperature: float = 1.0,
-        max_output_tokens: int = 65535,
+        max_output_tokens: int = 8000,
         use_search: bool = False,
         use_thinking: bool = False,
+        images: list = None,
+        system_prompt: str = None,
+        **kwargs
     ) -> str:
         """
         生成文本
@@ -81,14 +84,28 @@ class GenAIClient:
             max_output_tokens: 最大输出 token
             use_search: 是否使用搜索
             use_thinking: 是否启用思考模式
+            images: 图片列表（暂不支持）
+            system_prompt: 系统提示词（暂不支持）
 
         Returns:
             生成的文本
         """
+        parts = [types.Part(text=prompt)]
+
+        if images:
+            for img_data in images:
+                if isinstance(img_data, bytes):
+                    parts.append(types.Part(
+                        inline_data=types.Blob(
+                            mime_type="image/png",
+                            data=img_data
+                        )
+                    ))
+
         contents = [
             types.Content(
                 role="user",
-                parts=[types.Part(text=prompt)]
+                parts=parts
             )
         ]
 

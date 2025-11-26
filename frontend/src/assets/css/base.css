@@ -42,6 +42,8 @@ body {
   padding: 40px 60px;
   min-height: 100vh;
   background: linear-gradient(135deg, #FAFAFA 0%, #F4F5F7 100%);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Logo 区域 */
@@ -138,4 +140,53 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 全局页脚 */
+.global-footer {
+  margin-top: 80px;
+  padding: 32px 0 24px;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+}
+
+.footer-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-text {
+  font-size: 14px;
+  color: var(--text-sub);
+  font-weight: 500;
+}
+
+.footer-text a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.footer-text a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.footer-license {
+  font-size: 13px;
+  color: var(--text-placeholder);
+}
+
+.footer-license a {
+  color: var(--text-sub);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.footer-license a:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }

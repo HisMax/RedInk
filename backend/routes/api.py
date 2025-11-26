@@ -243,6 +243,8 @@ def regenerate_image():
         task_id = data.get('task_id')
         page = data.get('page')
         use_reference = data.get('use_reference', True)
+        full_outline = data.get('full_outline', '')
+        user_topic = data.get('user_topic', '')
 
         if not task_id or not page:
             return jsonify({
@@ -251,7 +253,11 @@ def regenerate_image():
             }), 400
 
         image_service = get_image_service()
-        result = image_service.regenerate_image(task_id, page, use_reference)
+        result = image_service.regenerate_image(
+            task_id, page, use_reference,
+            full_outline=full_outline,
+            user_topic=user_topic
+        )
 
         return jsonify(result), 200 if result["success"] else 500
 
