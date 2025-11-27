@@ -868,3 +868,34 @@ def update_config():
             "success": False,
             "error": f"更新配置失败: {str(e)}"
         }), 500
+
+
+@api_bp.route('/config/test', methods=['POST'])
+def test_connection():
+    """测试服务商连接"""
+    try:
+        data = request.get_json()
+        provider_type = data.get('type')
+        config = {
+            'api_key': data.get('api_key'),
+            'base_url': data.get('base_url'),
+            'model': data.get('model')
+        }
+
+        if provider_type == 'google_genai':
+            import google.generativeai as genai
+            genai.configure(api_key=config['api_key'])
+            model = genai.GenerativeModel(config['model'] or 'gemini-1.5-flash')
+            model.generate_content("test")
+        elif provider_type in ['openai_compatible', 'image_api']:
+            import requests
+            url = f"{config['base_url'].rstrip('/').rstrip('/v1')}/v1/models"
+            response = requests.get(url, headers={'Authorization': f"Bearer {config['api_key']}"}, timeout=10)
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}")
+        else:
+            raise ValueError(f"不支持的类型: {provider_type}")
+
+        return jsonify({"success": True, "message": "连接成功"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400

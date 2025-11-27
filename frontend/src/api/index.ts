@@ -512,3 +512,12 @@ export async function updateConfig(config: Partial<Config>): Promise<{
   const response = await axios.post(`${API_BASE_URL}/config`, config)
   return response.data
 }
+
+export async function testConnection(config: { type: string; api_key: string; base_url?: string; model: string }): Promise<{
+  success: boolean
+  message?: string
+  error?: string
+}> {
+  const response = await axios.post(`${API_BASE_URL}/config/test`, config)
+  return response.data
+}

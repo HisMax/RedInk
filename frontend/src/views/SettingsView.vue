@@ -43,18 +43,13 @@
             :class="{ active: textConfig.active_provider === name }"
           >
             <div class="col-status">
-              <span
-                v-if="textConfig.active_provider === name"
-                class="status-badge active"
-              >
-                已激活
-              </span>
               <button
-                v-else
                 class="btn-activate"
+                :class="{ active: textConfig.active_provider === name }"
                 @click="activateTextProvider(name as string)"
+                :disabled="textConfig.active_provider === name"
               >
-                激活
+                {{ textConfig.active_provider === name ? '已激活' : '激活' }}
               </button>
             </div>
             <div class="col-name">
@@ -69,6 +64,11 @@
               </span>
             </div>
             <div class="col-actions">
+              <button class="btn-icon" @click="testTextProviderInList(name as string, provider)" title="测试连接">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+              </button>
               <button class="btn-icon" @click="openEditTextProviderModal(name as string, provider)" title="编辑">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -123,18 +123,13 @@
             :class="{ active: imageConfig.active_provider === name }"
           >
             <div class="col-status">
-              <span
-                v-if="imageConfig.active_provider === name"
-                class="status-badge active"
-              >
-                已激活
-              </span>
               <button
-                v-else
                 class="btn-activate"
+                :class="{ active: imageConfig.active_provider === name }"
                 @click="activateImageProvider(name as string)"
+                :disabled="imageConfig.active_provider === name"
               >
-                激活
+                {{ imageConfig.active_provider === name ? '已激活' : '激活' }}
               </button>
             </div>
             <div class="col-name">
@@ -149,6 +144,11 @@
               </span>
             </div>
             <div class="col-actions">
+              <button class="btn-icon" @click="testImageProviderInList(name as string, provider)" title="测试连接">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+              </button>
               <button class="btn-icon" @click="openEditImageProviderModal(name as string, provider)" title="编辑">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -174,8 +174,8 @@
     </div>
 
     <!-- 编辑/添加文本生成服务商弹窗 -->
-    <div v-if="showTextProviderModal" class="modal-overlay" @click="closeTextProviderModal">
-      <div class="modal-content" @click.stop>
+    <div v-if="showTextProviderModal" class="modal-overlay">
+      <div class="modal-content">
         <div class="modal-header">
           <h3>{{ editingTextProvider ? '编辑服务商' : '添加服务商' }}</h3>
           <button class="close-btn" @click="closeTextProviderModal">×</button>
@@ -231,6 +231,9 @@
           </div>
         </div>
         <div class="modal-footer">
+          <button class="btn" @click="testTextConnection" :disabled="testingText">
+            {{ testingText ? '测试中...' : '测试连接' }}
+          </button>
           <button class="btn" @click="closeTextProviderModal">取消</button>
           <button class="btn btn-primary" @click="saveTextProvider">
             {{ editingTextProvider ? '保存' : '添加' }}
@@ -240,8 +243,8 @@
     </div>
 
     <!-- 编辑/添加图片生成服务商弹窗 -->
-    <div v-if="showImageProviderModal" class="modal-overlay" @click="closeImageProviderModal">
-      <div class="modal-content" @click.stop>
+    <div v-if="showImageProviderModal" class="modal-overlay">
+      <div class="modal-content">
         <div class="modal-header">
           <h3>{{ editingImageProvider ? '编辑服务商' : '添加服务商' }}</h3>
           <button class="close-btn" @click="closeImageProviderModal">×</button>
@@ -306,6 +309,9 @@
           </div>
         </div>
         <div class="modal-footer">
+          <button class="btn" @click="testImageConnection" :disabled="testingImage">
+            {{ testingImage ? '测试中...' : '测试连接' }}
+          </button>
           <button class="btn" @click="closeImageProviderModal">取消</button>
           <button class="btn btn-primary" @click="saveImageProvider">
             {{ editingImageProvider ? '保存' : '添加' }}
@@ -318,10 +324,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getConfig, updateConfig, type Config } from '../api'
+import { getConfig, updateConfig, testConnection, type Config } from '../api'
 
 const loading = ref(true)
 const saving = ref(false)
+const testingText = ref(false)
+const testingImage = ref(false)
 
 // 文本生成配置
 const textConfig = ref<{
@@ -645,6 +653,88 @@ async function deleteImageProvider(name: string) {
   }
 }
 
+// 测试文本服务商连接
+async function testTextConnection() {
+  if (!textProviderForm.value.api_key) {
+    alert('请先填写 API Key')
+    return
+  }
+  testingText.value = true
+  try {
+    const result = await testConnection({
+      type: textProviderForm.value.type,
+      api_key: textProviderForm.value.api_key,
+      base_url: textProviderForm.value.base_url,
+      model: textProviderForm.value.model
+    })
+    if (result.success) {
+      alert('✅ 连接成功！')
+    }
+  } catch (e: any) {
+    alert('❌ 连接失败：' + (e.response?.data?.error || e.message))
+  } finally {
+    testingText.value = false
+  }
+}
+
+// 测试图片服务商连接
+async function testImageConnection() {
+  if (!imageProviderForm.value.api_key) {
+    alert('请先填写 API Key')
+    return
+  }
+  testingImage.value = true
+  try {
+    const result = await testConnection({
+      type: imageProviderForm.value.type,
+      api_key: imageProviderForm.value.api_key,
+      base_url: imageProviderForm.value.base_url,
+      model: imageProviderForm.value.model
+    })
+    if (result.success) {
+      alert('✅ 连接成功！')
+    }
+  } catch (e: any) {
+    alert('❌ 连接失败：' + (e.response?.data?.error || e.message))
+  } finally {
+    testingImage.value = false
+  }
+}
+
+// 测试列表中的文本服务商
+async function testTextProviderInList(name: string, provider: any) {
+  try {
+    const result = await testConnection({
+      type: provider.type,
+      api_key: provider.api_key || textConfig.value.providers[name].api_key,
+      base_url: provider.base_url,
+      model: provider.model
+    })
+    if (result.success) {
+      alert('✅ 连接成功！')
+    }
+  } catch (e: any) {
+    alert('❌ 连接失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
+// 测试列表中的图片服务商
+async function testImageProviderInList(name: string, provider: any) {
+  try {
+    const result = await testConnection({
+      type: provider.type,
+      api_key: provider.api_key || imageConfig.value.providers[name].api_key,
+      base_url: provider.base_url,
+      model: provider.model
+    })
+    if (result.success) {
+      alert('✅ 连接成功！')
+    }
+  } catch (e: any) {
+    alert('❌ 连接失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
 onMounted(() => {
   loadConfig()
 })
@@ -685,7 +775,7 @@ onMounted(() => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 90px 1fr 100px 1fr 80px;
+  grid-template-columns: 90px 1fr 100px 1fr 120px;
   gap: 12px;
   padding: 12px 16px;
   background: #f9fafb;
@@ -699,7 +789,7 @@ onMounted(() => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 90px 1fr 100px 1fr 80px;
+  grid-template-columns: 90px 1fr 100px 1fr 120px;
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid #e5e7eb;
@@ -745,10 +835,21 @@ onMounted(() => {
   transition: all 0.15s;
 }
 
-.btn-activate:hover {
+.btn-activate:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
   background: #fef2f2;
+}
+
+.btn-activate.active {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+  cursor: default;
+}
+
+.btn-activate:disabled {
+  opacity: 1;
 }
 
 /* 名称和模型 */
