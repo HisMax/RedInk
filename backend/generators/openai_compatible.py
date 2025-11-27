@@ -69,6 +69,9 @@ class OpenAICompatibleGenerator(ImageGeneratorBase):
                 "解决方案：在系统设置页面编辑该服务商，填写 Base URL"
             )
 
+        # 规范化 base_url：去除末尾 /v1
+        self.base_url = self.base_url.rstrip('/').rstrip('/v1')
+
         # 默认模型
         self.default_model = config.get('model', 'dall-e-3')
 
@@ -131,7 +134,7 @@ class OpenAICompatibleGenerator(ImageGeneratorBase):
         quality: str
     ) -> bytes:
         """通过 /v1/images/generations 端点生成"""
-        url = f"{self.base_url.rstrip('/')}/v1/images/generations"
+        url = f"{self.base_url}/v1/images/generations"
         logger.debug(f"  发送请求到: {url}")
 
         headers = {
@@ -222,7 +225,7 @@ class OpenAICompatibleGenerator(ImageGeneratorBase):
         model: str
     ) -> bytes:
         """通过 /v1/chat/completions 端点生成（某些服务商使用此方式）"""
-        url = f"{self.base_url.rstrip('/')}/v1/chat/completions"
+        url = f"{self.base_url}/v1/chat/completions"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",

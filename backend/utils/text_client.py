@@ -48,7 +48,7 @@ class TextChatClient:
                 "解决方案：在系统设置页面编辑文本生成服务商，填写 API Key"
             )
 
-        self.base_url = base_url or "https://api.openai.com"
+        self.base_url = (base_url or "https://api.openai.com").rstrip('/').rstrip('/v1')
         self.chat_endpoint = f"{self.base_url}/v1/chat/completions"
 
     def _encode_image_to_base64(self, image_data: bytes) -> str:
