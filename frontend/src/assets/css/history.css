@@ -8,7 +8,7 @@
 
 .stat-box {
   background: white;
-  padding: 24px;
+  padding: 24px 61px;
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -265,7 +265,6 @@
 
 /* Modal Gallery Grid (History specific) */
 .modal-gallery-grid {
-  flex: 1;
   overflow-y: auto;
   padding: 20px;
   display: grid;

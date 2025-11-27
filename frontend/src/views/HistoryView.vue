@@ -204,7 +204,7 @@
                 </button>
               </div>
             </div>
-            <div style="display: flex; gap: 12px; align-items: flex-start;">
+            <div style="display: flex; gap: 12px; align-items: center;">
               <button class="btn" @click="downloadAllImages" style="padding: 8px 16px; font-size: 14px;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                 打包下载
@@ -216,7 +216,7 @@
           <div class="modal-gallery-grid">
              <div v-for="(img, idx) in viewingRecord.images.generated" :key="idx" class="modal-img-item">
                 <!-- 图片预览区域 -->
-                <div class="modal-img-preview" v-if="img">
+                <div class="modal-img-preview" v-if="img" :class="{regenerateIng: regeneratingImages.has(idx) }">
                   <img
                     :src="`/api/images/${viewingRecord.images.task_id}/${img}`"
                     loading="lazy"
@@ -229,7 +229,7 @@
                       @click="regenerateHistoryImage(idx)"
                       :disabled="regeneratingImages.has(idx)"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M23 4v6h-6"></path>
                         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                       </svg>
@@ -271,9 +271,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getHistoryList, getHistoryStats, searchHistory, deleteHistory, getHistory, type HistoryRecord, regenerateImage as apiRegenerateImage, updateHistory, scanAllTasks } from '../api'
+import { getHistoryList, getHistoryStats, searchHistory, deleteHistory, getHistory, type HistoryRecord, regenerateImage as apiRegenerateImage, updateHistory, scanAllTasks, regenerateImage } from '../api'
 import { useGeneratorStore } from '../stores/generator'
 
 const router = useRouter()
@@ -574,6 +574,7 @@ onMounted(async () => {
   }
 }
 
+
 /* Toolbar */
 .toolbar-wrapper {
   display: flex;
@@ -807,7 +808,7 @@ onMounted(async () => {
 .modal-fullscreen {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.9);
+  background: rgba(0,0,0,0.5);
   z-index: 999;
   display: flex;
   align-items: center;
@@ -855,7 +856,6 @@ onMounted(async () => {
 
 .modal-title.collapsed {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -962,7 +962,6 @@ onMounted(async () => {
 .original-input-text.collapsed {
   max-height: 4.8em; /* 约3行 */
   display: -webkit-box;
-  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -997,7 +996,6 @@ onMounted(async () => {
 }
 
 .modal-gallery-grid {
-  flex: 1;
   overflow-y: auto;
   padding: 20px;
   display: grid;
@@ -1038,6 +1036,14 @@ onMounted(async () => {
 .modal-img-preview:hover .modal-img-overlay {
   opacity: 1;
   pointer-events: auto;
+}
+.regenerateIng .modal-img-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.regenerateIng .spin-icon {
+  animation: spin 1s linear infinite;
 }
 
 .modal-overlay-btn {

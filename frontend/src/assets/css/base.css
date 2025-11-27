@@ -103,6 +103,7 @@ body {
 /* 通用容器 */
 .container {
   max-width: 1200px;
+  min-height: calc(100vh - 300px);
   margin: 0 auto;
 }
 
@@ -120,8 +121,6 @@ body {
   font-size: 36px;
   font-weight: 800;
   color: var(--text-main);
-  margin-bottom: 12px;
-  letter-spacing: -1px;
 }
 
 .page-subtitle {

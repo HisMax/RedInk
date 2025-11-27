@@ -124,6 +124,12 @@ const addPage = (type: 'cover' | 'content' | 'summary') => {
 }
 
 const goBack = () => {
+  // 如果有足够的 history，可以回退
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+  // 否则兜底到首页
   router.push('/')
 }
 

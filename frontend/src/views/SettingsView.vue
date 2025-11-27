@@ -45,7 +45,7 @@
             <div class="col-status">
               <span
                 v-if="textConfig.active_provider === name"
-                class="status-badge active"
+                class="seeting-status-badge active"
               >
                 已激活
               </span>
@@ -125,7 +125,7 @@
             <div class="col-status">
               <span
                 v-if="imageConfig.active_provider === name"
-                class="status-badge active"
+                class="seeting-status-badge active"
               >
                 已激活
               </span>
@@ -675,7 +675,8 @@ onMounted(() => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 90px 1fr 100px 1fr 80px;
+  /* 列宽比例：1, 2, 3, 4, 1 */
+  grid-template-columns: 1fr 2fr 3fr 4fr 1fr;
   gap: 12px;
   padding: 12px 16px;
   background: #f9fafb;
@@ -689,7 +690,8 @@ onMounted(() => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 90px 1fr 100px 1fr 80px;
+  /* 与表头保持一致的列宽比例 */
+  grid-template-columns: 1fr 2fr 3fr 4fr 1fr;
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid #e5e7eb;
@@ -709,8 +711,11 @@ onMounted(() => {
   background: #fef2f2;
 }
 
+.col-status {
+  position: relative;
+}
 /* 状态相关 */
-.status-badge {
+.seeting-status-badge {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
@@ -719,7 +724,7 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.status-badge.active {
+.seeting-status-badge.active {
   background: #dcfce7;
   color: #166534;
 }
@@ -758,6 +763,7 @@ onMounted(() => {
   font-size: 12px;
   font-family: 'Monaco', 'Menlo', monospace;
   color: #6b7280;
+  word-break: break-all;
 }
 
 .apikey-masked.empty {
