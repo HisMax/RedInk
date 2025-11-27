@@ -201,10 +201,10 @@
           <div class="form-group">
             <label>API Key</label>
             <input
-              type="password"
+              type="text"
               class="form-input"
               v-model="textProviderForm.api_key"
-              :placeholder="editingTextProvider ? '留空则保持原有 Key 不变' : '输入 API Key'"
+              :placeholder="editingTextProvider && textProviderForm._has_api_key ? textProviderForm.api_key_masked : '输入 API Key'"
             />
             <span class="form-hint" v-if="editingTextProvider && hasExistingApiKey(textProviderForm)">已配置 API Key，留空表示不修改</span>
           </div>
@@ -216,6 +216,9 @@
               v-model="textProviderForm.base_url"
               placeholder="例如: https://api.openai.com"
             />
+            <span class="form-hint" v-if="textProviderForm.base_url">
+              预览: {{ textProviderForm.base_url.replace(/\/$/, '').replace(/\/v1$/, '') }}/v1/chat/completions
+            </span>
           </div>
           <div class="form-group">
             <label>模型</label>
@@ -264,10 +267,10 @@
           <div class="form-group">
             <label>API Key</label>
             <input
-              type="password"
+              type="text"
               class="form-input"
               v-model="imageProviderForm.api_key"
-              :placeholder="editingImageProvider ? '留空则保持原有 Key 不变' : '输入 API Key'"
+              :placeholder="editingImageProvider && imageProviderForm._has_api_key ? imageProviderForm.api_key_masked : '输入 API Key'"
             />
             <span class="form-hint" v-if="editingImageProvider && hasExistingApiKey(imageProviderForm)">已配置 API Key，留空表示不修改</span>
           </div>
@@ -279,6 +282,9 @@
               v-model="imageProviderForm.base_url"
               placeholder="例如: https://api.openai.com"
             />
+            <span class="form-hint" v-if="imageProviderForm.base_url">
+              预览: {{ imageProviderForm.base_url.replace(/\/$/, '').replace(/\/v1$/, '') }}/v1/images/generations
+            </span>
           </div>
           <div class="form-group">
             <label>模型</label>
@@ -342,9 +348,10 @@ const textProviderForm = ref({
   name: '',
   type: 'openai_compatible',
   api_key: '',
+  api_key_masked: '',
   base_url: '',
   model: '',
-  _has_api_key: false // 标记是否已有 API Key
+  _has_api_key: false
 })
 
 // 图片服务商弹窗
@@ -354,6 +361,7 @@ const imageProviderForm = ref({
   name: '',
   type: '',
   api_key: '',
+  api_key_masked: '',
   base_url: '',
   model: '',
   high_concurrency: false,
@@ -474,10 +482,11 @@ function openEditTextProviderModal(name: string, provider: any) {
   textProviderForm.value = {
     name: name,
     type: provider.type || 'openai_compatible',
-    api_key: '', // 不显示已有的 key，让用户重新输入才会更新
+    api_key: '',
+    api_key_masked: provider.api_key_masked || '',
     base_url: provider.base_url || '',
     model: provider.model || '',
-    _has_api_key: !!provider.api_key // 标记是否已有 key
+    _has_api_key: !!provider.api_key_masked
   }
   showTextProviderModal.value = true
 }
@@ -565,10 +574,11 @@ function openEditImageProviderModal(name: string, provider: any) {
     name: name,
     type: provider.type || '',
     api_key: '',
+    api_key_masked: provider.api_key_masked || '',
     base_url: provider.base_url || '',
     model: provider.model || '',
     high_concurrency: provider.high_concurrency || false,
-    _has_api_key: !!provider.api_key
+    _has_api_key: !!provider.api_key_masked
   }
   showImageProviderModal.value = true
 }
