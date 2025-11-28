@@ -313,13 +313,21 @@ class ImageApiGenerator(ImageGeneratorBase):
                         logger.info(f"从 Markdown 提取到 {len(urls)} 张图片，下载第一张...")
                         return self._download_image(urls[0])
 
-                    # 2. 尝试解析 Base64 data URL
+                    # 2. 尝试解析 Markdown 图片 Base64： ![xxx](data:image)
+                    pattern = r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)'
+                    base64urls = re.findall(pattern, content)
+                    if base64urls and base64urls[0]:
+                        logger.info("从 Markdown 提取到 Base64 图片数据")
+                        base64_data = base64urls[0].split(",")[1]
+                        return base64.b64decode(base64_data)
+
+                    # 3. 尝试解析 Base64 data URL
                     if content.startswith("data:image"):
                         logger.info("检测到 Base64 图片数据")
                         base64_data = content.split(",")[1]
                         return base64.b64decode(base64_data)
 
-                    # 3. 尝试作为纯 URL 处理
+                    # 4. 尝试作为纯 URL 处理
                     if content.startswith("http://") or content.startswith("https://"):
                         logger.info("检测到图片 URL")
                         return self._download_image(content.strip())
