@@ -1,11 +1,14 @@
-# 文本生成服务配置
-# 请在 Web 界面的"设置"页面中配置 API Key
-active_provider: default
+active_provider: gem
 providers:
   default:
-    api_key: ""
     base_url: https://api.openai.com/v1
     max_output_tokens: 8000
     model: gpt-4o
+    stream: true
     temperature: 1
     type: openai_compatible
+  gem:
+    api_key: <api_key>
+    base_url: https://generativelanguage.googleapis.com
+    model: gemini-2.5-flash
+    type: google_gemini

@@ -4,21 +4,23 @@ from pathlib import Path
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from backend.config import Config
-from backend.routes import register_routes
+from backend.routes.api import api_bp
 
 
 def setup_logging():
     """配置日志系统"""
     # 创建根日志器
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    #root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     # 清除已有的处理器
     root_logger.handlers.clear()
 
     # 控制台处理器 - 详细格式
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.DEBUG)
+    # console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.INFO)
     console_format = logging.Formatter(
         '\n%(asctime)s | %(levelname)-8s | %(name)s\n'
         '  └─ %(message)s',
@@ -58,13 +60,12 @@ def create_app():
     CORS(app, resources={
         r"/api/*": {
             "origins": Config.CORS_ORIGINS,
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
         }
     })
 
-    # 注册所有 API 路由
-    register_routes(app)
+    app.register_blueprint(api_bp)
 
     # 启动时验证配置
     _validate_config_on_startup(logger)

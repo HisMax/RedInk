@@ -124,7 +124,7 @@ const addPage = (type: 'cover' | 'content' | 'summary') => {
 }
 
 const goBack = () => {
-  router.back()
+  router.push('/')
 }
 
 const startGeneration = () => {

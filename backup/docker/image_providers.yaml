@@ -1,0 +1,17 @@
+active_provider: gem
+providers:
+  default:
+    base_url: https://api.openai.com/v1
+    high_concurrency: false
+    model: dall-e-3
+    stream: true
+    type: image_api
+  gem:
+    api_key: han1234
+    base_url: http://flow2api:8000
+    endpoint_type: /v1/chat/completions
+    high_concurrency: false
+    model: gemini-3.0-pro-image-portrait
+    short_prompt: false
+    stream: false
+    type: image_api

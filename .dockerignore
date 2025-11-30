@@ -28,7 +28,6 @@ frontend/dist
 
 # 输出目录（用户数据）
 output
-history
 
 # 环境变量（敏感信息）
 .env

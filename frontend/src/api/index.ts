@@ -62,11 +62,76 @@ export async function generateOutline(
   return response.data
 }
 
+// 生成图片 (SSE)
+export function generateImages(
+  pages: Page[],
+  taskId: string | null,
+  onProgress: (event: ProgressEvent) => void,
+  onComplete: (event: ProgressEvent) => void,
+  onError: (event: ProgressEvent) => void,
+  onFinish: (event: FinishEvent) => void,
+  onStreamError: (error: Error) => void
+) {
+  const eventSource = new EventSource(`${API_BASE_URL}/generate?pages=${encodeURIComponent(JSON.stringify(pages))}&task_id=${taskId || ''}`)
+
+  eventSource.addEventListener('progress', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as ProgressEvent
+    onProgress(data)
+  })
+
+  eventSource.addEventListener('complete', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as ProgressEvent
+    onComplete(data)
+  })
+
+  eventSource.addEventListener('error', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as ProgressEvent
+    onError(data)
+  })
+
+  eventSource.addEventListener('finish', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as FinishEvent
+    onFinish(data)
+    eventSource.close()
+  })
+
+  eventSource.onerror = (error) => {
+    onStreamError(new Error('SSE 连接错误'))
+    eventSource.close()
+  }
+
+  return eventSource
+}
+
 // 获取图片 URL（新格式：task_id/filename）
 // thumbnail 参数：true=缩略图（默认），false=原图
 export function getImageUrl(taskId: string, filename: string, thumbnail: boolean = true): string {
   const thumbParam = thumbnail ? '?thumbnail=true' : '?thumbnail=false'
   return `${API_BASE_URL}/images/${taskId}/${filename}${thumbParam}`
+}
+
+// 向后兼容：自动解析包含task_id的URL
+export function getImageUrlAuto(urlOrPath: string): string {
+  // 如果已经是完整URL，直接返回
+  if (urlOrPath.startsWith('http') || urlOrPath.startsWith('/api/')) {
+    return urlOrPath
+  }
+  // 否则假定为 task_id/filename 格式
+  return `${API_BASE_URL}/images/${urlOrPath}`
+}
+
+// 重试单张图片
+export async function retrySingleImage(
+  taskId: string,
+  page: Page,
+  useReference: boolean = true
+): Promise<{ success: boolean; index: number; image_url?: string; error?: string }> {
+  const response = await axios.post(`${API_BASE_URL}/retry`, {
+    task_id: taskId,
+    page,
+    use_reference: useReference
+  })
+  return response.data
 }
 
 // 重新生成图片（即使成功的也可以重新生成）
@@ -384,6 +449,21 @@ export async function generateImagesPost(
   } catch (error) {
     onStreamError(error as Error)
   }
+}
+
+// 扫描单个任务并同步图片列表
+export async function scanTask(taskId: string): Promise<{
+  success: boolean
+  record_id?: string
+  task_id?: string
+  images_count?: number
+  images?: string[]
+  status?: string
+  no_record?: boolean
+  error?: string
+}> {
+  const response = await axios.get(`${API_BASE_URL}/history/scan/${taskId}`)
+  return response.data
 }
 
 // 扫描所有任务并同步图片列表

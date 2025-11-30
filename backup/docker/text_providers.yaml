@@ -1,0 +1,14 @@
+active_provider: gem
+providers:
+  default:
+    base_url: https://api.openai.com/v1
+    max_output_tokens: 8000
+    model: gpt-4o
+    stream: true
+    temperature: 1
+    type: openai_compatible
+  gem:
+    api_key: AIzaSyDrWAZEHEf59wUcezowbdUuswaAJeR0zaY
+    base_url: https://generativelanguage.googleapis.com
+    model: gemini-2.5-flash
+    type: google_gemini

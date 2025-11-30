@@ -1,4 +1,5 @@
 """Image API 图片生成器"""
+import json
 import logging
 import time
 import random
@@ -40,6 +41,10 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        # 是否启用流式 chat 接口（用于要求 stream=True 的兼容服务商）
+        stream_flag = config.get('stream')
+        # chat/completions 场景默认开启流式，除非显式配置为 False
+        self.stream_enabled = stream_flag if stream_flag is not None else True
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
@@ -125,8 +130,10 @@ class ImageApiGenerator(ImageGeneratorBase):
         """通过 /v1/images/generations 端点生成图片"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
+        if self.stream_enabled:
+            headers["Accept"] = "text/event-stream"
 
         payload = {
             "model": model,
@@ -260,13 +267,22 @@ class ImageApiGenerator(ImageGeneratorBase):
             "model": model,
             "messages": [{"role": "user", "content": user_content}],
             "max_tokens": 4096,
-            "temperature": 1.0
+            "temperature": 1.0,
+            "stream": self.stream_enabled,
         }
 
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.info(f"Chat API 生成图片: {api_url}, model={model}")
+        self._log_prompt_preview(payload)
+        self._debug_log_request(api_url, payload, self.stream_enabled)
 
-        response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=300,
+            stream=self.stream_enabled,
+        )
 
         if response.status_code != 200:
             error_detail = response.text[:500]
@@ -296,6 +312,9 @@ class ImageApiGenerator(ImageGeneratorBase):
                     f"【模型】{model}"
                 )
 
+        if self.stream_enabled:
+            return self._handle_streaming_chat_response(response)
+
         result = response.json()
         logger.debug(f"Chat API 响应: {str(result)[:500]}")
 
@@ -304,33 +323,7 @@ class ImageApiGenerator(ImageGeneratorBase):
             choice = result["choices"][0]
             if "message" in choice and "content" in choice["message"]:
                 content = choice["message"]["content"]
-
-                if isinstance(content, str):
-                    # Markdown 图片链接: ![xxx](url)
-                    pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)'
-                    urls = re.findall(pattern, content)
-                    if urls:
-                        logger.info(f"从 Markdown 提取到 {len(urls)} 张图片，下载第一张...")
-                        return self._download_image(urls[0])
-
-                    # Markdown 图片 Base64: ![xxx](data:image/...)
-                    base64_pattern = r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)'
-                    base64_urls = re.findall(base64_pattern, content)
-                    if base64_urls:
-                        logger.info("从 Markdown 提取到 Base64 图片数据")
-                        base64_data = base64_urls[0].split(",")[1]
-                        return base64.b64decode(base64_data)
-
-                    # 纯 Base64 data URL
-                    if content.startswith("data:image"):
-                        logger.info("检测到 Base64 图片数据")
-                        base64_data = content.split(",")[1]
-                        return base64.b64decode(base64_data)
-
-                    # 纯 URL
-                    if content.startswith("http://") or content.startswith("https://"):
-                        logger.info("检测到图片 URL")
-                        return self._download_image(content.strip())
+                return self._extract_image_from_content(content)
 
         raise Exception(
             "❌ 无法从 Chat API 响应中提取图片数据\n\n"
@@ -343,6 +336,128 @@ class ImageApiGenerator(ImageGeneratorBase):
             "1. 确认模型名称正确\n"
             "2. 修改提示词后重试"
         )
+
+    def _extract_image_from_content(self, content: Any) -> bytes:
+        """从 chat 消息内容中提取图片数据"""
+        import re
+
+        if isinstance(content, str):
+            # 1. 尝试解析 Markdown 图片链接: ![xxx](url)
+            pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)'
+            urls = re.findall(pattern, content)
+            if urls:
+                logger.info(f"从 Markdown 提取到 {len(urls)} 张图片，下载第一张...")
+                return self._download_image(urls[0])
+
+            # 2. 尝试解析 Base64 data URL
+            if content.startswith("data:image"):
+                logger.info("检测到 Base64 图片数据")
+                base64_data = content.split(",")[1]
+                return base64.b64decode(base64_data)
+
+            # 3. 尝试作为纯 URL 处理
+            if content.startswith("http://") or content.startswith("https://"):
+                logger.info("检测到图片 URL")
+                return self._download_image(content.strip())
+
+        raise Exception(
+            "❌ 无法从 Chat API 响应中提取图片数据\n\n"
+            f"【响应内容】\n{str(content)[:500]}\n\n"
+            "【可能原因】\n"
+            "1. 该模型不支持图片生成\n"
+            "2. 响应格式与预期不符\n"
+            "3. 提示词被安全过滤\n\n"
+            "【解决方案】\n"
+            "1. 确认模型名称正确\n"
+            "2. 修改提示词后重试"
+        )
+
+    def _handle_streaming_chat_response(self, response: requests.Response) -> bytes:
+        """解析流式 chat 响应，拼接内容后提取图片"""
+        content_parts: List[str] = []
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            data_str = line.strip()
+            if data_str.startswith("data:"):
+                data_str = data_str[5:].strip()
+
+            if data_str in ("", "[DONE]"):
+                continue
+
+            try:
+                chunk = json.loads(data_str)
+            except Exception:
+                continue
+
+            for choice in chunk.get("choices", []):
+                delta = choice.get("delta", {}) or {}
+                if delta.get("reasoning_content"):
+                    content_parts.append(delta["reasoning_content"])
+                if delta.get("content"):
+                    content_parts.append(delta["content"])
+
+        final_content = "".join(content_parts).strip()
+        if not final_content:
+            raise Exception("流式响应未返回可解析的内容，无法提取图片")
+
+        logger.debug(f"流式拼接内容: {final_content[:200]}")
+        return self._extract_image_from_content(final_content)
+
+    def _debug_log_request(self, api_url: str, payload: Dict[str, Any], stream: bool):
+        """调试输出已发送的请求（脱敏）"""
+        safe_payload = payload.copy()
+        # 避免日志里出现长 base64
+        if "messages" in safe_payload:
+            safe_messages = []
+            for msg in safe_payload["messages"]:
+                msg_copy = msg.copy()
+                content = msg_copy.get("content")
+                if isinstance(content, list):
+                    truncated = []
+                    for part in content:
+                        part_copy = part.copy()
+                        if part_copy.get("type") == "image_url":
+                            part_copy["image_url"] = {"url": "[base64 truncated]"}
+                        truncated.append(part_copy)
+                    msg_copy["content"] = truncated
+                safe_messages.append(msg_copy)
+            safe_payload["messages"] = safe_messages
+
+        logger.debug(
+            "Chat API 请求详情: url=%s, stream=%s, payload=%s",
+            api_url,
+            stream,
+            safe_payload,
+        )
+
+    def _log_prompt_preview(self, payload: Dict[str, Any]):
+        """记录本次发送的文本提示词，便于排查提示内容"""
+        try:
+            messages = payload.get("messages", [])
+            previews = []
+            for msg in messages:
+                role = msg.get("role")
+                content = msg.get("content")
+                if isinstance(content, list):
+                    parts = []
+                    for part in content:
+                        if part.get("type") == "text":
+                            text = part.get("text", "")
+                            parts.append(text)
+                        elif part.get("type") == "image_url":
+                            parts.append("[image]")
+                    preview_text = " ".join(parts)
+                else:
+                    preview_text = str(content) if content is not None else ""
+                previews.append(f"{role}: {preview_text}")
+            preview_joined = " | ".join(previews)
+            logger.info(f"Chat API Prompt: {preview_joined[:800]}")
+        except Exception:
+            # 避免日志异常影响主流程
+            logger.debug("记录提示词失败", exc_info=True)
 
     def _download_image(self, url: str) -> bytes:
         """下载图片并返回二进制数据"""

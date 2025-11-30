@@ -82,7 +82,7 @@
 **最简单的部署方式，一行命令即可启动：**
 
 ```bash
-docker run -d -p 12398:12398 -v ./history:/app/history -v ./output:/app/output histonemax/redink:latest
+docker run -d -p 12398:12398 -v ./output:/app/output histonemax/redink:latest
 ```
 
 访问 http://localhost:12398，在 Web 界面的**设置页面**配置你的 API Key 即可使用。
@@ -97,7 +97,6 @@ docker-compose up -d
 
 **Docker 部署说明：**
 - 容器内不包含任何 API Key，需要在 Web 界面配置
-- 使用 `-v ./history:/app/history` 持久化历史记录
 - 使用 `-v ./output:/app/output` 持久化生成的图片
 - 可选：挂载自定义配置文件 `-v ./text_providers.yaml:/app/text_providers.yaml`
 
@@ -256,22 +255,12 @@ providers:
 
 ### 未来计划
 - [ ] 支持更多图片格式，例如一句话生成一套PPT什么的
-- [x] 历史记录管理优化
+- [ ] 历史记录管理优化
 - [ ] 导出为各种格式(PDF、长图等)
 
 ---
 
 ## 更新日志
-
-### v1.4.0 (2025-11-30)
-- 🏗️ 后端架构重构：拆分单体路由为模块化蓝图（history、images、generation、outline、config）
-- 🏗️ 前端组件重构：提取可复用组件（ImageGalleryModal、OutlineModal、ShowcaseBackground等）
-- ✨ 优化首页设计，移除冗余内容区块
-- ✨ 背景图片预加载和渐入动画，提升加载体验
-- ✨ 历史记录持久化支持（Docker部署）
-- 🔧 修复历史记录预览和大纲查看功能
-- 🔧 优化Modal组件可见性控制
-- 🧪 新增65个后端单元测试
 
 ### v1.3.0 (2025-11-26)
 - ✨ 新增 Docker 支持，一键部署

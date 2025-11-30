@@ -1,10 +1,17 @@
-# 图片生成服务配置
-# 请在 Web 界面的"设置"页面中配置 API Key
-active_provider: default
+active_provider: gem
 providers:
   default:
-    api_key: ""
     base_url: https://api.openai.com/v1
     high_concurrency: false
     model: dall-e-3
+    stream: true
+    type: image_api
+  gem:
+    api_key: <api_key>
+    base_url: http://localhost:8000
+    endpoint_type: /v1/chat/completions
+    high_concurrency: false
+    model: gemini-3.0-pro-image-portrait
+    short_prompt: false
+    stream: false
     type: image_api

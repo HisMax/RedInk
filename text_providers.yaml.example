@@ -12,6 +12,8 @@ providers:
     api_key: sk-xxxxxxxxxxxxxxxxxxxx
     base_url: https://api.openai.com/v1
     model: gpt-4o
+    # 是否开启流式响应解析（兼容 data: {...} 片段）
+    stream: false
 
   # Google Gemini（原生接口）
   gemini:
