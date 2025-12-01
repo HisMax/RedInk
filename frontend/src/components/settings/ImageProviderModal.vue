@@ -125,6 +125,23 @@
             启用后使用精简版提示词，适合有字符限制的 API（如即梦 1600 字符限制）。
           </span>
         </div>
+
+        <!-- 使用原始尺寸标签 -->
+        <div class="form-group" v-if="showEndpointType">
+          <label class="toggle-label">
+            <span>使用原始尺寸标签</span>
+            <div
+              class="toggle-switch"
+              :class="{ active: formData.use_size_tag }"
+              @click="updateField('use_size_tag', !formData.use_size_tag)"
+            >
+              <div class="toggle-slider"></div>
+            </div>
+          </label>
+          <span class="form-hint">
+            如果启用，将直接发送 "4K"/"HD" 等标签而不是转换为 "1024x1024" 等分辨率。仅在 API 需要特定标签时启用。
+          </span>
+        </div>
       </div>
 
       <div class="modal-footer">

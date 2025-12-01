@@ -40,6 +40,9 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        # 是否直接使用尺寸标签（如 "4K"）而不是转换为分辨率（如 "1024x1024"）
+        # 某些非标准 API 可能需要原始标签
+        self.use_size_tag = config.get('use_size_tag', False)
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
@@ -128,12 +131,26 @@ class ImageApiGenerator(ImageGeneratorBase):
             "Content-Type": "application/json"
         }
 
+        # 尺寸处理逻辑
+        if self.use_size_tag:
+            # 如果配置了使用标签，直接使用原始值 (如 "4K")
+            final_size = self.image_size
+        else:
+            # 默认模式：将标签转换为标准分辨率
+            size_mapping = {
+                "1K": "1024x1024",
+                "2K": "1024x1024",
+                "4K": "1024x1024"
+            }
+            # 如果是预定义标签则转换，否则原样使用
+            final_size = size_mapping.get(self.image_size, self.image_size)
+ 
         payload = {
             "model": model,
             "prompt": prompt,
             "response_format": "b64_json",
             "aspect_ratio": aspect_ratio,
-            "image_size": self.image_size
+            "image_size": final_size
         }
 
         # 收集所有参考图片
@@ -200,8 +217,24 @@ class ImageApiGenerator(ImageGeneratorBase):
                 else:
                     b64_string = b64_data_uri
                 image_data = base64.b64decode(b64_string)
-                logger.info(f"✅ Image API 图片生成成功: {len(image_data)} bytes")
+                logger.info(f"✅ Image API 图片生成成功 (Base64): {len(image_data)} bytes")
                 return image_data
+            
+            # 处理 URL 格式
+            elif "url" in item:
+                image_url = item["url"]
+                logger.info(f"收到图片 URL，正在下载: {image_url}")
+                try:
+                    img_response = requests.get(image_url, timeout=60)
+                    if img_response.status_code == 200:
+                        image_data = img_response.content
+                        logger.info(f"✅ Image API 图片下载成功: {len(image_data)} bytes")
+                        return image_data
+                    else:
+                        raise Exception(f"图片下载失败: status={img_response.status_code}")
+                except Exception as e:
+                    logger.error(f"下载图片 URL 失败: {e}")
+                    raise Exception(f"下载图片 URL 失败: {str(e)}")
 
         logger.error(f"无法从响应中提取图片数据: {str(result)[:200]}")
         raise Exception(
