@@ -239,6 +239,8 @@ const modelPlaceholder = computed(() => {
       return '例如: flux-pro'
     case 'modelscope':
       return '例如: Tongyi-MAI/Z-Image-Turbo'
+    case 'replicate':
+      return '例如: prunaai/z-image-turbo:0870559624690b3709350177b9d521d84e54d297026d725358b8f73193429e91'
     default:
       return '例如: gpt-4o'
   }

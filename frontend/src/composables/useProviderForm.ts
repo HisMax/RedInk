@@ -65,7 +65,8 @@ export const textTypeOptions = [
 export const imageTypeOptions = [
   { value: 'google_genai', label: 'Google GenAI' },
   { value: 'image_api', label: 'OpenAI 兼容接口' },
-  { value: 'modelscope', label: 'ModelScope Z-Image' }
+  { value: 'modelscope', label: 'ModelScope Z-Image' },
+  { value: 'replicate', label: 'Replicate' }
 ]
 
 /**

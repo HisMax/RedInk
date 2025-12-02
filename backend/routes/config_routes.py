@@ -301,8 +301,45 @@ def _test_provider_connection(provider_type: str, config: dict) -> dict:
     elif provider_type == 'modelscope':
         return _test_modelscope(config)
 
+    elif provider_type == 'replicate':
+        return _test_replicate(config)
+
     else:
         raise ValueError(f"不支持的类型: {provider_type}")
+
+
+def _test_replicate(config: dict) -> dict:
+    """测试 Replicate 连接"""
+    import replicate
+    import os
+
+    if not config['api_key']:
+        raise ValueError("API Key 未配置")
+
+    # 设置临时的 API Token
+    client = replicate.Client(api_token=config['api_key'])
+    
+    try:
+        # 尝试获取模型信息以验证 Key
+        # 使用一个公开且稳定的模型作为测试对象，例如 SDXL 或 z-image
+        model_id = config.get('model', 'prunaai/z-image-turbo:0870559624690b3709350177b9d521d84e54d297026d725358b8f73193429e91')
+        
+        # 如果包含版本号，分离出模型名
+        if ':' in model_id:
+            model_name = model_id.split(':')[0]
+        else:
+            model_name = model_id
+            
+        model = client.models.get(model_name)
+        
+        return {
+            "success": True,
+            "message": f"连接成功！已验证模型: {model.owner}/{model.name}"
+        }
+
+    except Exception as e:
+        raise Exception(f"连接测试失败: {str(e)}")
+
 
 
 def _test_google_genai(config: dict) -> dict:
