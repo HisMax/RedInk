@@ -197,6 +197,11 @@ class ImageService:
                         model=self.provider_config.get('model', 'nano-banana-2'),
                         reference_images=reference_images if reference_images else None,
                     )
+                elif self.provider_config.get('type') == 'modelscope':
+                    logger.debug(f"  使用 ModelScope 生成器")
+                    image_data = self.generator.generate_image(
+                        prompt=prompt
+                    )
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")
                     image_data = self.generator.generate_image(

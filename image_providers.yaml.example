@@ -27,3 +27,11 @@ providers:
     base_url: https://your-api-endpoint.com
     model: dall-e-3
     high_concurrency: false
+
+  # ModelScope Z-Image
+  modelscope:
+    type: modelscope
+    api_key: ms-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api-inference.modelscope.cn/
+    model: Tongyi-MAI/Z-Image-Turbo
+    high_concurrency: false

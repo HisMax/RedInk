@@ -8,3 +8,9 @@ providers:
     high_concurrency: false
     model: dall-e-3
     type: image_api
+  modelscope:
+    type: modelscope
+    api_key: ""
+    base_url: https://api-inference.modelscope.cn/
+    model: Tongyi-MAI/Z-Image-Turbo
+    high_concurrency: false

@@ -222,7 +222,7 @@ function updateField(field: keyof FormData, value: string | boolean) {
 
 // 是否显示 Base URL
 const showBaseUrl = computed(() => {
-  return ['image_api', 'google_genai'].includes(props.formData.type)
+  return ['image_api', 'google_genai', 'modelscope'].includes(props.formData.type)
 })
 
 // 是否显示端点类型
@@ -237,6 +237,8 @@ const modelPlaceholder = computed(() => {
       return '例如: imagen-3.0-generate-002'
     case 'image_api':
       return '例如: flux-pro'
+    case 'modelscope':
+      return '例如: Tongyi-MAI/Z-Image-Turbo'
     default:
       return '例如: gpt-4o'
   }
@@ -257,6 +259,8 @@ const previewUrl = computed(() => {
       return `${baseUrl}/v1/images/generations`
     case 'google_genai':
       return `${baseUrl}/v1beta/models/${props.formData.model || '{model}'}:generateImages`
+    case 'modelscope':
+      return `${baseUrl}/v1/images/generations`
     default:
       return ''
   }
