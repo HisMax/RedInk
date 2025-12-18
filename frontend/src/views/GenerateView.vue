@@ -47,7 +47,6 @@
               <button
                 class="overlay-btn"
                 @click="regenerateImage(image.index)"
-                :disabled="image.status === 'retrying'"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M23 4v6h-6"></path>
@@ -99,7 +98,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
-import { generateImagesPost, regenerateImage as apiRegenerateImage, retryFailedImages as apiRetryFailed, createHistory, updateHistory, getImageUrl } from '../api'
+import { generateImagesPost, regenerateImage as apiRegenerateImage, retryFailedImages as apiRetryFailed, createHistory, updateHistory } from '../api'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -263,7 +262,9 @@ onMounted(async () => {
       if (store.recordId) {
         try {
           // 收集所有生成的图片文件名
-          const generatedImages = event.images.filter(img => img !== null)
+          const generatedImages = event.images.filter(
+            (img): img is string => typeof img === 'string' && img.length > 0
+          )
 
           // 确定状态
           let status = 'completed'
@@ -272,7 +273,7 @@ onMounted(async () => {
           }
 
           // 获取封面图作为缩略图（只保存文件名，不是完整URL）
-          const thumbnail = generatedImages.length > 0 ? generatedImages[0] : null
+          const thumbnail = generatedImages.length > 0 ? generatedImages[0] : undefined
 
           await updateHistory(store.recordId, {
             images: {
@@ -280,7 +281,7 @@ onMounted(async () => {
               generated: generatedImages
             },
             status: status,
-            thumbnail: thumbnail
+            thumbnail
           })
           console.log('历史记录已更新')
         } catch (e) {

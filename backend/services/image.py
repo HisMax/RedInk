@@ -46,7 +46,7 @@ class ImageService:
         self.provider_config = provider_config
 
         # 检查是否启用短 prompt 模式
-        self.use_short_prompt = provider_config.get('short_prompt', False)
+        self.use_short_prompt = provider_config.get('short_prompt', False) or provider_type == 'modelscope_z_image'
 
         # 加载提示词模板
         self.prompt_template = self._load_prompt_template()
@@ -191,6 +191,19 @@ class ImageService:
                         temperature=self.provider_config.get('temperature', 1.0),
                         model=self.provider_config.get('model', 'nano-banana-2'),
                         reference_images=reference_images if reference_images else None,
+                    )
+                elif self.provider_config.get('type') == 'wan2.6-t2i':
+                    logger.debug(f"  使用 通义万相 Wan2.6 生成器")
+                    image_data = self.generator.generate_image(
+                        prompt=prompt,
+                        aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                        model=self.provider_config.get('model', 'wan2.6-t2i'),
+                    )
+                elif self.provider_config.get('type') == 'modelscope_z_image':
+                    logger.debug("  使用 ModelScope Z-Image 生成器")
+                    image_data = self.generator.generate_image(
+                        prompt=prompt,
+                        model=self.provider_config.get('model', 'Tongyi-MAI/Z-Image-Turbo'),
                     )
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")

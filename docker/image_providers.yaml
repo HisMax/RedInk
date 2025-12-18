@@ -4,7 +4,7 @@ active_provider: default
 providers:
   default:
     api_key: ""
-    base_url: https://api.openai.com/v1
+    base_url: ""
     high_concurrency: false
-    model: dall-e-3
+    model: ""
     type: image_api

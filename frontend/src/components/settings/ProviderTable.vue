@@ -81,6 +81,7 @@ interface Provider {
   base_url?: string
   api_key?: string
   api_key_masked?: string
+  endpoint_type?: string
 }
 
 // 定义 Props

@@ -13,6 +13,7 @@ import os
 import io
 import zipfile
 import logging
+import inspect
 from flask import Blueprint, request, jsonify, send_file
 from backend.services.history import get_history_service
 
@@ -387,12 +388,17 @@ def create_history_blueprint():
             safe_title = _sanitize_filename(title)
             filename = f"{safe_title}.zip"
 
-            return send_file(
-                zip_buffer,
-                mimetype='application/zip',
-                as_attachment=True,
-                download_name=filename
-            )
+            send_file_kwargs = {
+                "mimetype": "application/zip",
+                "as_attachment": True,
+            }
+            send_file_sig = inspect.signature(send_file)
+            if "download_name" in send_file_sig.parameters:
+                send_file_kwargs["download_name"] = filename
+            else:
+                send_file_kwargs["attachment_filename"] = filename
+
+            return send_file(zip_buffer, **send_file_kwargs)
 
         except Exception as e:
             error_msg = str(e)
@@ -450,10 +456,24 @@ def _sanitize_filename(title: str) -> str:
     Returns:
         str: 安全的文件名
     """
-    # 只保留字母、数字、空格、连字符和下划线
     safe_title = "".join(
         c for c in title
-        if c.isalnum() or c in (' ', '-', '_', '\u4e00-\u9fff')
+        if c.isalnum() or c in (" ", "-", "_")
     ).strip()
 
-    return safe_title if safe_title else 'images'
+    safe_title = "_".join(safe_title.split())
+
+    if not safe_title:
+        return "images"
+
+    max_bytes = 120
+    encoded = safe_title.encode("utf-8", errors="ignore")
+    if len(encoded) <= max_bytes:
+        return safe_title
+
+    truncated = encoded[:max_bytes]
+    while truncated and (truncated[-1] & 0b1100_0000) == 0b1000_0000:
+        truncated = truncated[:-1]
+
+    result = truncated.decode("utf-8", errors="ignore").rstrip("_")
+    return result if result else "images"

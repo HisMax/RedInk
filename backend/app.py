@@ -1,7 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, request
 from flask_cors import CORS
 from backend.config import Config
 from backend.routes import register_routes
@@ -78,6 +78,8 @@ def create_app():
         # 处理 Vue Router 的 HTML5 History 模式
         @app.errorhandler(404)
         def fallback(e):
+            if request.path.startswith('/api/'):
+                return {"success": False, "error": "Not Found"}, 404
             return send_from_directory(app.static_folder, 'index.html')
     else:
         @app.route('/')

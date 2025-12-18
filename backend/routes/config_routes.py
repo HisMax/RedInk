@@ -127,7 +127,7 @@ def create_config_blueprint():
         测试服务商连接
 
         请求体：
-        - type: 服务商类型（google_genai/google_gemini/openai_compatible/image_api）
+        - type: 服务商类型（google_genai/google_gemini/openai_compatible/image_api/wan2.6-t2i/modelscope_z_image）
         - provider_name: 服务商名称（用于从配置读取 API Key）
         - api_key: API Key（可选，若不提供则从配置读取）
         - base_url: Base URL（可选）
@@ -149,7 +149,8 @@ def create_config_blueprint():
             config = {
                 'api_key': data.get('api_key'),
                 'base_url': data.get('base_url'),
-                'model': data.get('model')
+                'model': data.get('model'),
+                'endpoint_type': data.get('endpoint_type')
             }
 
             # 如果没有提供 api_key，从配置文件读取
@@ -269,6 +270,8 @@ def _load_provider_config(provider_type: str, provider_name: str, config: dict) 
                     config['base_url'] = saved.get('base_url')
                 if not config['model']:
                     config['model'] = saved.get('model')
+                if not config.get('endpoint_type'):
+                    config['endpoint_type'] = saved.get('endpoint_type')
 
     return config
 
@@ -297,6 +300,10 @@ def _test_provider_connection(provider_type: str, config: dict) -> dict:
 
     elif provider_type == 'image_api':
         return _test_image_api(config)
+    elif provider_type == 'wan2.6-t2i':
+        return _test_wan26_t2i(config)
+    elif provider_type == 'modelscope_z_image':
+        return _test_modelscope_z_image(config)
 
     else:
         raise ValueError(f"不支持的类型: {provider_type}")
@@ -395,23 +402,199 @@ def _test_openai_compatible(config: dict, test_prompt: str) -> dict:
 def _test_image_api(config: dict) -> dict:
     """测试图片 API 连接"""
     import requests
+    # 改为直接使用用户提供的 endpoint_type 进行 POST 测试
+    base_url = ((config.get('base_url') or 'https://api.openai.com')).strip().rstrip('/')
+    endpoint_type = ((config.get('endpoint_type') or '/v1/images/generations')).strip()
+    if not endpoint_type.startswith('/'):
+        endpoint_type = '/' + endpoint_type
 
-    base_url = config['base_url'].rstrip('/').rstrip('/v1') if config.get('base_url') else 'https://api.openai.com'
-    url = f"{base_url}/v1/models"
+    # 避免 base_url 结尾包含版本号导致重复（如 /api/v3 + /v3/...）
+    try:
+        import re
+        m = re.match(r'^/(v\d+)(/.*)?$', endpoint_type)
+        version_prefix = m.group(1) if m else None
+        if version_prefix and base_url.endswith('/' + version_prefix):
+            base_url = base_url[:-(len(version_prefix) + 1)]
+    except Exception:
+        pass
 
-    response = requests.get(
-        url,
-        headers={'Authorization': f"Bearer {config['api_key']}"},
-        timeout=30
-    )
+    url = f"{base_url}{endpoint_type}"
+    logger.info(f"正在测试图片 API 连接: {url}")
+
+    try:
+        # 使用最小合法的 POST 负载进行连通性测试
+        payload = {
+            "model": config.get("model") or "seedream-4.5",
+            "prompt": "测试连接：你好，红墨",
+            # 通用 OpenAI 兼容字段，避免过于特殊参数导致报错
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "b64_json"
+        }
+        headers = {
+            'Authorization': f"Bearer {config['api_key']}",
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        logger.info(f"图片 API 测试响应: status={response.status_code}, url={url}, body={response.text[:200]}")
+
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "message": "连接成功！图片生成端点可用。"
+            }
+        elif response.status_code == 401:
+             return {
+                "success": False,
+                "error": "连接失败：API Key 无效 (HTTP 401)"
+            }
+        elif response.status_code in [400, 403]:
+             # 400/403 通常表示连通性正常，但参数/权限有问题
+             return {
+                 "success": True,
+                 "message": f"连接连通（HTTP {response.status_code}）。若生成失败，请检查模型名、参数或账户权限。"
+             }
+        else:
+             # 保留对 404 的严格失败提示
+             raise Exception(f"HTTP {response.status_code}: 无法连接到服务商。请检查 Base URL、endpoint_type 和模型是否正确。\n测试路径: {url}")
+
+    except Exception as e:
+        logger.error(f"图片 API 测试异常: {e}")
+        return {
+            "success": False,
+            "error": f"连接失败: {str(e)}"
+        }
+
+
+def _test_wan26_t2i(config: dict) -> dict:
+    import requests
+
+    base_url = (config.get("base_url") or "https://dashscope.aliyuncs.com/api/v1").strip().rstrip("/")
+    if "/services/aigc/multimodal-generation/generation" in base_url:
+        base_url = base_url.split("/services/aigc/multimodal-generation/generation", 1)[0].rstrip("/")
+    if base_url.endswith("/api"):
+        base_url = f"{base_url}/v1"
+    elif "/api/" not in base_url and "dashscope" in base_url:
+        base_url = f"{base_url}/api/v1"
+    url = f"{base_url}/services/aigc/multimodal-generation/generation"
+
+    payload = {
+        "model": config.get("model") or "wan2.6-t2i",
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": "测试连接：你好，红墨"}],
+                }
+            ]
+        },
+        "parameters": {
+            "negative_prompt": "",
+            "prompt_extend": False,
+            "watermark": False,
+            "n": 1,
+            "size": "960*1280",
+        },
+    }
+
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    logger.info(f"通义万相测试响应: status={response.status_code}, url={url}, body={response.text[:200]}")
 
     if response.status_code == 200:
+        try:
+            data = response.json() if response.content else {}
+            output = data.get("output") or {}
+            results = output.get("results") or []
+            choices = output.get("choices") or []
+
+            has_result = bool(results)
+            if not has_result and isinstance(choices, list) and choices:
+                for choice in choices:
+                    if not isinstance(choice, dict):
+                        continue
+                    message = choice.get("message") or {}
+                    content = message.get("content") if isinstance(message, dict) else None
+                    if isinstance(content, list) and any(isinstance(p, dict) and p.get("image") for p in content):
+                        has_result = True
+                        break
+
+            if has_result:
+                return {
+                    "success": True,
+                    "message": "连接成功！通义万相文生图端点可用。"
+                }
+            return {
+                "success": True,
+                "message": "连接成功（HTTP 200），但未返回图片结果字段。请在实际生成时验证。"
+            }
+        except Exception:
+            return {
+                "success": True,
+                "message": "连接成功（HTTP 200）。"
+            }
+
+
+def _test_modelscope_z_image(config: dict) -> dict:
+    import requests
+
+    base_url = ((config.get("base_url") or "https://api-inference.modelscope.cn")).strip().rstrip("/")
+    endpoint_type = ((config.get("endpoint_type") or "/v1/images/generations")).strip()
+    if not endpoint_type.startswith("/"):
+        endpoint_type = "/" + endpoint_type
+
+    url = f"{base_url}{endpoint_type}"
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json",
+        "X-ModelScope-Async-Mode": "true",
+    }
+    payload = {
+        "model": config.get("model") or "Tongyi-MAI/Z-Image-Turbo",
+        "prompt": "测试连接：你好，红墨",
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=20)
+    logger.info(f"ModelScope Z-Image 测试响应: status={response.status_code}, url={url}, body={response.text[:200]}")
+
+    if response.status_code == 200:
+        try:
+            data = response.json() if response.content else {}
+        except Exception:
+            data = {}
+
+        task_id = data.get("task_id") or data.get("id")
+        if task_id:
+            return {
+                "success": True,
+                "message": "连接成功！已创建异步任务。"
+            }
         return {
             "success": True,
-            "message": "连接成功！仅代表连接稳定，不确定是否可以稳定支持图片生成"
+            "message": "连接成功（HTTP 200）。"
         }
-    else:
-        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+
+    if response.status_code == 401:
+        return {
+            "success": False,
+            "error": "连接失败：API Key 无效 (HTTP 401)"
+        }
+
+    if response.status_code in [400, 403, 404]:
+        return {
+            "success": True,
+            "message": f"连接连通（HTTP {response.status_code}）。若生成失败，请检查模型名、参数或账户权限。"
+        }
+
+    return {
+        "success": False,
+        "error": f"连接失败：HTTP {response.status_code}: {response.text[:200]}"
+    }
 
 
 def _check_response(result_text: str) -> dict:

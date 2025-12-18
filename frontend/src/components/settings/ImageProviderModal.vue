@@ -58,7 +58,7 @@
             class="form-input"
             :value="formData.base_url"
             @input="updateField('base_url', ($event.target as HTMLInputElement).value)"
-            placeholder="例如: https://generativelanguage.googleapis.com"
+            :placeholder="baseUrlPlaceholder"
           />
           <span class="form-hint" v-if="previewUrl">
             预览: {{ previewUrl }}
@@ -205,12 +205,12 @@ function updateField(field: keyof FormData, value: string | boolean) {
 
 // 是否显示 Base URL
 const showBaseUrl = computed(() => {
-  return ['image_api', 'google_genai'].includes(props.formData.type)
+  return ['image_api', 'google_genai', 'wan2.6-t2i', 'modelscope_z_image'].includes(props.formData.type)
 })
 
 // 是否显示端点类型
 const showEndpointType = computed(() => {
-  return props.formData.type === 'image_api'
+  return ['image_api', 'modelscope_z_image'].includes(props.formData.type)
 })
 
 // 模型占位符
@@ -220,8 +220,27 @@ const modelPlaceholder = computed(() => {
       return '例如: imagen-3.0-generate-002'
     case 'image_api':
       return '例如: flux-pro'
+    case 'wan2.6-t2i':
+      return '例如: wan2.6-t2i'
+    case 'modelscope_z_image':
+      return '例如: Tongyi-MAI/Z-Image-Turbo'
     default:
       return '例如: gpt-4o'
+  }
+})
+
+const baseUrlPlaceholder = computed(() => {
+  switch (props.formData.type) {
+    case 'google_genai':
+      return '例如: https://generativelanguage.googleapis.com'
+    case 'image_api':
+      return '例如: https://api.openai.com'
+    case 'wan2.6-t2i':
+      return '例如: https://dashscope.aliyuncs.com/api/v1'
+    case 'modelscope_z_image':
+      return '例如: https://api-inference.modelscope.cn'
+    default:
+      return '例如: https://api.example.com'
   }
 })
 
@@ -229,11 +248,38 @@ const modelPlaceholder = computed(() => {
 const previewUrl = computed(() => {
   if (!props.formData.base_url) return ''
 
+  if (props.formData.type === 'wan2.6-t2i') {
+    const rawBaseUrl = props.formData.base_url.replace(/\/$/, '')
+    return `${rawBaseUrl}/services/aigc/multimodal-generation/generation`
+  }
+  if (props.formData.type === 'modelscope_z_image') {
+    const rawBaseUrl = props.formData.base_url.replace(/\/+$/, '')
+    return `${rawBaseUrl}/`
+  }
+
   const baseUrl = props.formData.base_url.replace(/\/$/, '').replace(/\/v1$/, '')
   const endpointType = props.formData.endpoint_type || '/v1/images/generations'
 
   switch (props.formData.type) {
     case 'image_api':
+      // 如果用户自定义了 endpoint_type，直接显示完整路径
+      if (props.formData.endpoint_type) {
+         // 检查 base_url 是否已经包含了 endpoint 的开头部分（简单的去重逻辑）
+         // 这里只做简单展示，更复杂的逻辑在后端处理
+         const endpoint = props.formData.endpoint_type.startsWith('/') ? props.formData.endpoint_type : '/' + props.formData.endpoint_type
+         
+         // 简单的去重显示：如果 base_url 结尾是 /v1 且 endpoint 是 /v1/...
+         if (baseUrl.endsWith('/v1') && endpoint.startsWith('/v1')) {
+            return `${baseUrl.slice(0, -3)}${endpoint}`
+         }
+          // 如果 base_url 结尾是 /v3 且 endpoint 是 /v3/...
+         if (baseUrl.endsWith('/v3') && endpoint.startsWith('/v3')) {
+            return `${baseUrl.slice(0, -3)}${endpoint}`
+         }
+
+         return `${baseUrl}${endpoint}`
+      }
+
       if (endpointType.includes('chat')) {
         return `${baseUrl}/v1/chat/completions`
       }

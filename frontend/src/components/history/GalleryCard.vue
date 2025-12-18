@@ -62,26 +62,26 @@ import { computed } from 'vue'
  */
 
 // 定义记录类型
-interface Record {
+interface HistoryRecord {
   id: string
   title: string
-  status: 'draft' | 'completed' | 'generating'
+  status: string
   page_count: number
   updated_at: string
-  thumbnail?: string
-  task_id?: string
+  thumbnail?: string | null
+  task_id?: string | null
 }
 
 // 定义 Props
 const props = defineProps<{
-  record: Record
+  record: HistoryRecord
 }>()
 
 // 定义 Emits
 defineEmits<{
   (e: 'preview', id: string): void
   (e: 'edit', id: string): void
-  (e: 'delete', record: Record): void
+  (e: 'delete', record: HistoryRecord): void
 }>()
 
 /**
@@ -91,7 +91,8 @@ const statusText = computed(() => {
   const map: Record<string, string> = {
     draft: '草稿',
     completed: '已完成',
-    generating: '生成中'
+    generating: '生成中',
+    partial: '部分完成'
   }
   return map[props.record.status] || props.record.status
 })

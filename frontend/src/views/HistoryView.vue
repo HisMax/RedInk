@@ -69,6 +69,17 @@
       <div class="spinner"></div>
     </div>
 
+    <div v-else-if="loadError && records.length === 0" class="empty-state-large">
+      <div class="empty-img">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </div>
+      <h3>加载失败</h3>
+      <p class="empty-tips">{{ loadError }}</p>
+      <div style="margin-top: 18px;">
+        <button class="btn" @click="loadData" style="border: 1px solid var(--border-color);">重试</button>
+      </div>
+    </div>
+
     <div v-else-if="records.length === 0" class="empty-state-large">
       <div class="empty-img">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
@@ -149,6 +160,7 @@ const store = useGeneratorStore()
 const records = ref<HistoryRecord[]>([])
 const loading = ref(false)
 const stats = ref<any>(null)
+const loadError = ref<string | null>(null)
 const currentTab = ref('all')
 const searchKeyword = ref('')
 const currentPage = ref(1)
@@ -165,15 +177,18 @@ const isScanning = ref(false)
  */
 async function loadData() {
   loading.value = true
+  loadError.value = null
   try {
     let statusFilter = currentTab.value === 'all' ? undefined : currentTab.value
     const res = await getHistoryList(currentPage.value, 12, statusFilter)
     if (res.success) {
       records.value = res.records
       totalPages.value = res.total_pages
+    } else {
+      loadError.value = res.error || '加载失败'
     }
   } catch(e) {
-    console.error(e)
+    loadError.value = '无法连接后端服务，请确认后端已启动（http://localhost:12398）'
   } finally {
     loading.value = false
   }
@@ -207,13 +222,18 @@ async function handleSearch() {
     return
   }
   loading.value = true
+  loadError.value = null
   try {
     const res = await searchHistory(searchKeyword.value)
     if (res.success) {
       records.value = res.records
       totalPages.value = 1
+    } else {
+      loadError.value = res.error || '搜索失败'
     }
-  } catch(e) {} finally {
+  } catch(e) {
+    loadError.value = '无法连接后端服务，请确认后端已启动（http://localhost:12398）'
+  } finally {
     loading.value = false
   }
 }
@@ -229,7 +249,7 @@ async function loadRecord(id: string) {
     store.recordId = res.record.id
     if (res.record.images.generated.length > 0) {
       store.taskId = res.record.images.task_id
-      store.images = res.record.outline.pages.map((page, idx) => {
+      store.images = res.record.outline.pages.map((_page, idx) => {
         const filename = res.record!.images.generated[idx]
         return {
           index: idx,
@@ -404,7 +424,6 @@ onMounted(async () => {
       await loadStats()
     }
   } catch (e) {
-    console.error('自动扫描失败:', e)
   }
 })
 </script>

@@ -36,13 +36,12 @@ class ImageApiGenerator(ImageGeneratorBase):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         logger.debug("初始化 ImageApiGenerator...")
-        self.base_url = config.get('base_url', 'https://api.example.com').rstrip('/').rstrip('/v1')
-        self.model = config.get('model', 'default-model')
-        self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
-        self.image_size = config.get('image_size', '4K')
-
+        
+        # 原始 Base URL
+        base_url = (config.get('base_url', 'https://api.example.com') or 'https://api.example.com').strip().rstrip('/')
+        
         # 支持自定义端点路径
-        endpoint_type = config.get('endpoint_type', '/v1/images/generations')
+        endpoint_type = (config.get('endpoint_type', '/v1/images/generations') or '/v1/images/generations').strip()
         # 兼容旧的简写格式
         if endpoint_type == 'images':
             endpoint_type = '/v1/images/generations'
@@ -52,6 +51,28 @@ class ImageApiGenerator(ImageGeneratorBase):
         if not endpoint_type.startswith('/'):
             endpoint_type = '/' + endpoint_type
         self.endpoint_type = endpoint_type
+        
+        # 智能处理 Base URL: 
+        # 如果 endpoint_type 是 /v3/xxx，且 base_url 结尾也是 /v3，则去掉 base_url 的 /v3
+        # 避免拼接成 /v3/v3/xxx
+        
+        # 提取版本前缀 (e.g. /v1, /v3)
+        import re
+        version_match = re.search(r'^/(v\d+)', self.endpoint_type)
+        if version_match:
+            version_prefix = version_match.group(1) # e.g. /v3
+            if base_url.endswith(version_prefix):
+                 base_url = base_url[:-len(version_prefix)].rstrip('/')
+        
+        # 兼容旧逻辑：如果 base_url 结尾是 /v1 但 endpoint 也是 /v1 开头，去掉 base_url 的
+        elif base_url.endswith('/v1') and self.endpoint_type.startswith('/v1'):
+             base_url = base_url[:-3].rstrip('/')
+             
+        self.base_url = base_url
+
+        self.model = config.get('model', 'default-model')
+        self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
+        self.image_size = config.get('image_size', '4K')
 
         logger.info(f"ImageApiGenerator 初始化完成: base_url={self.base_url}, model={self.model}, endpoint={self.endpoint_type}")
 

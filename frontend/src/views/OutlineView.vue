@@ -23,8 +23,8 @@
         class="card outline-card"
         :draggable="true"
         @dragstart="onDragStart($event, idx)"
-        @dragover.prevent="onDragOver($event, idx)"
-        @drop="onDrop($event, idx)"
+        @dragover.prevent="onDragOver(idx)"
+        @drop="onDrop(idx)"
         :class="{ 'dragging-over': dragOverIndex === idx }"
       >
         <!-- 拖拽手柄 (改为右上角或更加隐蔽) -->
@@ -96,12 +96,12 @@ const onDragStart = (e: DragEvent, index: number) => {
   }
 }
 
-const onDragOver = (e: DragEvent, index: number) => {
+const onDragOver = (index: number) => {
   if (draggedIndex.value === index) return
   dragOverIndex.value = index
 }
 
-const onDrop = (e: DragEvent, index: number) => {
+const onDrop = (index: number) => {
   dragOverIndex.value = null
   if (draggedIndex.value !== null && draggedIndex.value !== index) {
     store.movePage(draggedIndex.value, index)

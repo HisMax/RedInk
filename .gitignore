@@ -58,6 +58,10 @@ history/*
 .gemini/
 /image_providers.yaml
 /text_providers.yaml
+*_providers.yaml
+*_providers.yml
+!*_providers.yaml.example
+!*_providers.yml.example
 
 # Logs
 *.log

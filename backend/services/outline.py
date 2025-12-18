@@ -53,7 +53,7 @@ class OutlineService:
 
     def _get_client(self):
         """根据配置获取客户端"""
-        active_provider = self.text_config.get('active_provider', 'google_gemini')
+        active_provider = self.text_config.get('active_provider')
         providers = self.text_config.get('providers', {})
 
         if not providers:
@@ -65,14 +65,10 @@ class OutlineService:
                 "2. 或手动编辑 text_providers.yaml 文件"
             )
 
-        if active_provider not in providers:
-            available = ', '.join(providers.keys())
-            logger.error(f"文本服务商 [{active_provider}] 不存在，可用: {available}")
-            raise ValueError(
-                f"未找到文本生成服务商配置: {active_provider}\n"
-                f"可用的服务商: {available}\n"
-                "解决方案：在系统设置中选择一个可用的服务商"
-            )
+        if not active_provider or active_provider not in providers:
+            fallback = next(iter(providers.keys()))
+            self.text_config['active_provider'] = fallback
+            active_provider = fallback
 
         provider_config = providers.get(active_provider, {})
 
@@ -83,6 +79,7 @@ class OutlineService:
                 "解决方案：在系统设置页面编辑该服务商，填写 API Key"
             )
 
+        self.active_provider = active_provider
         logger.info(f"使用文本服务商: {active_provider} (type={provider_config.get('type')})")
         return get_text_chat_client(provider_config)
 
@@ -143,8 +140,10 @@ class OutlineService:
                 logger.debug(f"添加了 {len(images)} 张参考图片到提示词")
 
             # 从配置中获取模型参数
-            active_provider = self.text_config.get('active_provider', 'google_gemini')
+            active_provider = getattr(self, 'active_provider', self.text_config.get('active_provider'))
             providers = self.text_config.get('providers', {})
+            if not active_provider or active_provider not in providers:
+                active_provider = next(iter(providers.keys()))
             provider_config = providers.get(active_provider, {})
 
             model = provider_config.get('model', 'gemini-2.0-flash-exp')
