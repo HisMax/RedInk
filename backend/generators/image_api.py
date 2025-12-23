@@ -148,7 +148,8 @@ class ImageApiGenerator(ImageGeneratorBase):
             "prompt": prompt,
             "response_format": "b64_json",
             "aspect_ratio": aspect_ratio,
-            "image_size": self.image_size
+            "image_size": self.image_size,
+            "watermark": False
         }
 
         # 收集所有参考图片
