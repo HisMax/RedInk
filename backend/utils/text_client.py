@@ -48,10 +48,26 @@ class TextChatClient:
                 "解决方案：在系统设置页面编辑文本生成服务商，填写 API Key"
             )
 
-        self.base_url = (base_url or "https://api.openai.com").rstrip('/').rstrip('/v1')
+        # 规范化 base_url 并识别 API 版本（OpenAI 默认 v1，火山引擎 Ark/Doubao 为 v3）
+        raw_base_url = (base_url or "https://api.openai.com").rstrip('/')
+        if raw_base_url.endswith('/v3') or ('volces' in raw_base_url.lower()) or ('ark' in raw_base_url.lower()):
+            self.api_version = 'v3'
+        else:
+            self.api_version = 'v1'
 
-        # 支持自定义端点路径
-        endpoint = endpoint_type or '/v1/chat/completions'
+        # 去掉末尾版本号，保留基础路径（例如 https://ark.../api）
+        if raw_base_url.endswith('/v1') or raw_base_url.endswith('/v3'):
+            self.base_url = raw_base_url.rsplit('/', 1)[0]
+        else:
+            self.base_url = raw_base_url
+
+        # 支持自定义端点路径；简写会自动映射至正确版本
+        default_endpoint = f"/{self.api_version}/chat/completions"
+        endpoint = endpoint_type or default_endpoint
+        if endpoint == 'chat':
+            endpoint = f"/{self.api_version}/chat/completions"
+        elif endpoint == 'images':
+            endpoint = f"/{self.api_version}/images/generations"
         # 确保端点以 / 开头
         if not endpoint.startswith('/'):
             endpoint = '/' + endpoint
