@@ -29,22 +29,38 @@ class OpenAICompatibleGenerator(ImageGeneratorBase):
                 "解决方案：在系统设置页面编辑该服务商，填写 Base URL"
             )
 
-        # 规范化 base_url：去除末尾 /v1
-        self.base_url = self.base_url.rstrip('/').rstrip('/v1')
+        # 规范化 base_url 并识别 API 版本（OpenAI 默认 v1，火山引擎 Ark/Doubao 为 v3）
+        raw_base_url = (self.base_url or '').rstrip('/')
+
+        # 识别 Doubao/Ark：如果 base_url 以 /v3 结尾，或域名包含 volces/ark，则使用 v3
+        if raw_base_url.endswith('/v3') or ('volces' in raw_base_url.lower()) or ('ark' in raw_base_url.lower()):
+            self.api_version = 'v3'
+        else:
+            self.api_version = 'v1'
+
+        # 去掉末尾版本号，保留基础路径（例如 https://ark.../api）
+        if raw_base_url.endswith('/v1') or raw_base_url.endswith('/v3'):
+            self.base_url = raw_base_url.rsplit('/', 1)[0]
+        else:
+            self.base_url = raw_base_url
 
         # 默认模型
         self.default_model = config.get('model', 'dall-e-3')
 
         # API 端点类型: 支持完整路径 (如 '/v1/images/generations') 或简写 ('images', 'chat')
-        endpoint_type = config.get('endpoint_type', '/v1/images/generations')
-        # 兼容旧的简写格式
+        default_endpoint = f"/{self.api_version}/images/generations"
+        endpoint_type = config.get('endpoint_type', default_endpoint)
+        # 兼容简写：根据识别出的版本拼接正确路径
         if endpoint_type == 'images':
-            endpoint_type = '/v1/images/generations'
+            endpoint_type = f"/{self.api_version}/images/generations"
         elif endpoint_type == 'chat':
-            endpoint_type = '/v1/chat/completions'
+            endpoint_type = f"/{self.api_version}/chat/completions"
         self.endpoint_type = endpoint_type
 
-        logger.info(f"OpenAICompatibleGenerator 初始化完成: base_url={self.base_url}, model={self.default_model}, endpoint={self.endpoint_type}")
+        logger.info(
+            f"OpenAICompatibleGenerator 初始化完成: base_url={self.base_url}, api_version={self.api_version}, "
+            f"model={self.default_model}, endpoint={self.endpoint_type}"
+        )
 
     def validate_config(self) -> bool:
         """验证配置"""

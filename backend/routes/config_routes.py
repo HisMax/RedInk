@@ -364,8 +364,8 @@ def _test_openai_compatible(config: dict, test_prompt: str) -> dict:
     """测试 OpenAI 兼容接口"""
     import requests
 
-    base_url = config['base_url'].rstrip('/').rstrip('/v1') if config.get('base_url') else 'https://api.openai.com'
-    url = f"{base_url}/v1/chat/completions"
+    base_url, api_version = _normalize_base_url_and_version(config.get('base_url'))
+    url = f"{base_url}/{api_version}/chat/completions"
 
     payload = {
         "model": config.get('model') or 'gpt-3.5-turbo',
@@ -396,8 +396,8 @@ def _test_image_api(config: dict) -> dict:
     """测试图片 API 连接"""
     import requests
 
-    base_url = config['base_url'].rstrip('/').rstrip('/v1') if config.get('base_url') else 'https://api.openai.com'
-    url = f"{base_url}/v1/models"
+    base_url, api_version = _normalize_base_url_and_version(config.get('base_url'))
+    url = f"{base_url}/{api_version}/models"
 
     response = requests.get(
         url,
@@ -426,3 +426,17 @@ def _check_response(result_text: str) -> dict:
             "success": True,
             "message": f"连接成功，但响应内容不符合预期: {result_text[:100]}"
         }
+
+
+def _normalize_base_url_and_version(base_url: str | None) -> tuple[str, str]:
+    raw = (base_url or 'https://api.openai.com').rstrip('/')
+    lowered = raw.lower()
+    if raw.endswith('/v3') or ('volces' in lowered) or ('ark' in lowered):
+        api_version = 'v3'
+    else:
+        api_version = 'v1'
+
+    if raw.endswith('/v1') or raw.endswith('/v3'):
+        raw = raw.rsplit('/', 1)[0]
+
+    return raw, api_version
