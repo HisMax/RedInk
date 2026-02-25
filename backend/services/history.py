@@ -465,7 +465,7 @@ class HistoryService:
             def get_index(filename):
                 try:
                     return int(filename.split('.')[0])
-                except:
+                except Exception:
                     return 999
 
             image_files.sort(key=get_index)
