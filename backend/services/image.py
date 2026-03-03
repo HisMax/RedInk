@@ -603,6 +603,10 @@ class ImageService:
         Yields:
             进度事件
         """
+        # 设置任务目录
+        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
+        os.makedirs(self.current_task_dir, exist_ok=True)
+
         # 获取参考图
         reference_image = None
         if task_id in self._task_states:
