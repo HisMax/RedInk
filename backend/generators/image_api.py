@@ -240,7 +240,12 @@ class ImageApiGenerator(ImageGeneratorBase):
             "model": model,
             "messages": [{"role": "user", "content": user_content}],
             "max_tokens": 4096,
-            "temperature": 1.0
+            "temperature": 1.0,
+            "modalities": ["image", "text"],
+            "image_config": {
+                "aspect_ratio": aspect_ratio,
+                "image_size": self.image_size
+            }
         }
 
         api_url = f"{self.base_url}{self.endpoint_type}"
@@ -282,8 +287,30 @@ class ImageApiGenerator(ImageGeneratorBase):
         # 解析响应
         if "choices" in result and len(result["choices"]) > 0:
             choice = result["choices"][0]
-            if "message" in choice and "content" in choice["message"]:
-                content = choice["message"]["content"]
+            message = choice.get("message", {})
+
+            # OpenRouter 格式: images 数组包含 base64 data URLs
+            if "images" in message and len(message["images"]) > 0:
+                image_obj = message["images"][0]
+                image_url = image_obj.get("image_url", {}).get("url", "")
+                if image_url.startswith("data:image"):
+                    logger.info("从 OpenRouter images 数组提取到 Base64 图片")
+                    base64_data = image_url.split(",", 1)[1]
+                    return base64.b64decode(base64_data)
+
+            if "content" in message:
+                content = message["content"]
+
+                # Handle content as list (multimodal parts)
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            if part.get("type") == "image_url":
+                                img_url = part.get("image_url", {}).get("url", "")
+                                if img_url.startswith("data:image"):
+                                    logger.info("从 content parts 提取到 Base64 图片")
+                                    base64_data = img_url.split(",", 1)[1]
+                                    return base64.b64decode(base64_data)
 
                 if isinstance(content, str):
                     # Markdown 图片链接: ![xxx](url)
