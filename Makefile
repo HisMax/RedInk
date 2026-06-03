@@ -8,6 +8,11 @@ EVAL_MIN_OVERALL ?= 80
 EVAL_MAX_SCORE_DROP ?= 3
 EVAL_LIVE ?= 0
 EVAL_REPORT_ONLY ?= 0
+CASE_LIBRARY ?= reports/xhs-content-cases.jsonl
+CASE_REPORT ?= $(REPORT_DIR)/xhs-content-case-report.md
+CASE_EXAMPLES ?= $(REPORT_DIR)/xhs-prompt-examples.jsonl
+CASE_MIN_VIRAL ?= 4
+CASE_LIMIT ?= 20
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -31,11 +36,15 @@ ifeq ($(EVAL_REPORT_ONLY),1)
 EVAL_ARGS += --report-only
 endif
 
-.PHONY: eval-quality test-quality
+.PHONY: eval-quality summarize-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_quality_eval.py $(EVAL_ARGS)
+
+summarize-cases:
+	@mkdir -p "$(REPORT_DIR)"
+	@$(PYTHON) scripts/summarize_xhs_content_cases.py --library "$(CASE_LIBRARY)" --markdown "$(CASE_REPORT)" --examples-jsonl "$(CASE_EXAMPLES)" --min-viral-potential "$(CASE_MIN_VIRAL)" --limit "$(CASE_LIMIT)"
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

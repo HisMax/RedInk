@@ -223,6 +223,12 @@ Mark one case after human review:
 uv run python scripts/review_xhs_content_case.py --library reports/xhs-content-cases.jsonl --record-id manual_eval_001:coffee_beginner --publishable true --viral-potential 5 --issue-type hook_weak --selected-title "收藏：新手如何学会手冲咖啡完整流程" --notes "Ready for publishing"
 ```
 
+Summarize reviewed cases and export high-quality prompt examples:
+
+```bash
+make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl
+```
+
 ---
 
 ## 🔧 Configuration

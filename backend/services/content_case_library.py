@@ -5,6 +5,7 @@ Local JSONL content case library for Xiaohongshu evaluations.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -143,6 +144,188 @@ def update_case_review(
         raise ValueError(f"content case record not found: {record_id}")
 
     return updated_records, updated_record
+
+
+def summarize_case_records(records: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Summarize review outcomes and content quality for a case library."""
+    rows = list(records)
+    reviewed = [
+        row for row in rows
+        if (row.get("human_review") or {}).get("status") not in (None, "", "unreviewed")
+    ]
+    publishable = [
+        row for row in rows
+        if (row.get("human_review") or {}).get("publishable") is True
+    ]
+    needs_revision = [
+        row for row in rows
+        if _needs_revision(row)
+    ]
+
+    issue_counts = Counter()
+    for row in rows:
+        issue_counts.update(_as_list((row.get("human_review") or {}).get("issue_types")))
+
+    quality_scores = [
+        (row.get("quality") or {}).get("overall")
+        for row in rows
+        if isinstance((row.get("quality") or {}).get("overall"), (int, float))
+    ]
+    viral_scores = [
+        (row.get("human_review") or {}).get("viral_potential")
+        for row in rows
+        if isinstance((row.get("human_review") or {}).get("viral_potential"), (int, float))
+    ]
+
+    return {
+        "total_count": len(rows),
+        "reviewed_count": len(reviewed),
+        "publishable_count": len(publishable),
+        "needs_revision_count": len(needs_revision),
+        "average_quality_overall": _average(quality_scores),
+        "average_viral_potential": _average(viral_scores),
+        "issue_type_counts": dict(sorted(issue_counts.items())),
+        "top_cases": _top_cases(rows),
+    }
+
+
+def select_prompt_examples(
+    records: Iterable[Dict[str, Any]],
+    *,
+    min_viral_potential: int = 4,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """Select publishable, high-potential cases as prompt examples."""
+    candidates = []
+    for row in records:
+        review = row.get("human_review") or {}
+        if review.get("publishable") is not True:
+            continue
+        viral_potential = review.get("viral_potential")
+        if not isinstance(viral_potential, (int, float)) or viral_potential < min_viral_potential:
+            continue
+        content = row.get("content") or {}
+        case = row.get("case") or {}
+        candidates.append({
+            "record_id": row.get("record_id"),
+            "category": case.get("category"),
+            "topic": case.get("topic"),
+            "title": review.get("selected_title") or _first(content.get("titles")),
+            "copywriting": review.get("edited_copywriting") or content.get("copywriting", ""),
+            "tags": _as_list(content.get("tags")),
+            "quality_overall": (row.get("quality") or {}).get("overall"),
+            "viral_potential": viral_potential,
+            "notes": review.get("notes", ""),
+        })
+
+    candidates.sort(
+        key=lambda item: (
+            item.get("viral_potential") or 0,
+            item.get("quality_overall") or 0,
+            item.get("record_id") or "",
+        ),
+        reverse=True,
+    )
+    return candidates[:limit]
+
+
+def write_case_library_report(summary: Dict[str, Any], path: str | Path) -> None:
+    """Write a compact Markdown report for a case library summary."""
+    report_path = Path(path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Content Case Library Report",
+        "",
+        f"- Total cases: {summary['total_count']}",
+        f"- Reviewed cases: {summary['reviewed_count']}",
+        f"- Publishable cases: {summary['publishable_count']}",
+        f"- Needs revision: {summary['needs_revision_count']}",
+        f"- Average quality: {summary['average_quality_overall']}",
+        f"- Average viral potential: {summary['average_viral_potential']}",
+        "",
+        "## Issue Types",
+        "",
+    ]
+    issue_counts = summary.get("issue_type_counts") or {}
+    if issue_counts:
+        for issue_type, count in issue_counts.items():
+            lines.append(f"- {issue_type}: {count}")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Top Cases", ""])
+    top_cases = summary.get("top_cases") or []
+    if top_cases:
+        for case in top_cases:
+            lines.append(
+                f"- {case['record_id']}: viral={case['viral_potential']}, "
+                f"quality={case['quality_overall']}, topic={case['topic']}"
+            )
+    else:
+        lines.append("- None")
+
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_prompt_examples(examples: Iterable[Dict[str, Any]], path: str | Path) -> int:
+    """Write prompt examples as JSONL."""
+    examples_path = Path(path)
+    examples_path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with examples_path.open("w", encoding="utf-8") as f:
+        for example in examples:
+            f.write(json.dumps(example, ensure_ascii=False) + "\n")
+            count += 1
+    return count
+
+
+def _needs_revision(record: Dict[str, Any]) -> bool:
+    review = record.get("human_review") or {}
+    quality = record.get("quality") or {}
+    return (
+        review.get("status") == "needs_revision"
+        or review.get("publishable") is False
+        or quality.get("baseline_passed") is False
+    )
+
+
+def _top_cases(records: List[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+    rows = []
+    for row in records:
+        review = row.get("human_review") or {}
+        if review.get("publishable") is not True:
+            continue
+        case = row.get("case") or {}
+        rows.append({
+            "record_id": row.get("record_id"),
+            "topic": case.get("topic"),
+            "category": case.get("category"),
+            "quality_overall": (row.get("quality") or {}).get("overall"),
+            "viral_potential": review.get("viral_potential"),
+        })
+    rows.sort(
+        key=lambda item: (
+            item.get("viral_potential") or 0,
+            item.get("quality_overall") or 0,
+            item.get("record_id") or "",
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
+
+
+def _average(values: List[int | float]) -> float | int | None:
+    if not values:
+        return None
+    result = sum(values) / len(values)
+    if result.is_integer():
+        return int(result)
+    return round(result, 2)
+
+
+def _first(value: Any) -> Any:
+    values = _as_list(value)
+    return values[0] if values else None
 
 
 def _utc_now() -> str:

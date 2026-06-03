@@ -7,7 +7,11 @@ from backend.services.content_case_library import (
     build_case_records,
     load_case_records,
     save_case_records,
+    select_prompt_examples,
+    summarize_case_records,
     update_case_review,
+    write_case_library_report,
+    write_prompt_examples,
 )
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
@@ -406,6 +410,97 @@ def test_content_case_library_updates_human_review_fields(tmp_path):
     assert loaded[0]["human_review"]["reviewed_at"] == "2026-06-04T10:00:00Z"
 
 
+def test_content_case_library_summarizes_reviews_and_exports_examples(tmp_path):
+    results = [
+        {
+            "case_id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "trace_id": "trace_1",
+            "titles": ["标题A", "标题B"],
+            "copywriting": "正文A",
+            "tags": ["咖啡", "新手"],
+            "overall": 90,
+            "decision": "approve",
+            "issues_count": 0,
+            "suggestions_count": 1,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        },
+        {
+            "case_id": "office_efficiency",
+            "category": "职场效率",
+            "topic": "打工人如何用AI整理会议纪要",
+            "trace_id": "trace_2",
+            "titles": ["标题C"],
+            "copywriting": "正文B",
+            "tags": ["AI", "会议纪要"],
+            "overall": 78,
+            "decision": "revise",
+            "issues_count": 2,
+            "suggestions_count": 3,
+            "baseline_passed": False,
+            "baseline_reason": "overall 78 below 80",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        },
+    ]
+    records = build_case_records(
+        results,
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    records, _updated = update_case_review(
+        records,
+        "eval_001:coffee_beginner",
+        status="reviewed",
+        publishable=True,
+        viral_potential=5,
+        issue_types=["hook_strong"],
+        selected_title="标题B",
+        edited_copywriting="人工优质改稿",
+        notes="可作为模板",
+        reviewed_at="2026-06-04T10:00:00Z",
+    )
+    records, _updated = update_case_review(
+        records,
+        "eval_001:office_efficiency",
+        status="needs_revision",
+        publishable=False,
+        viral_potential=2,
+        issue_types=["hook_weak", "benefit_unclear"],
+        notes="需要重写",
+        reviewed_at="2026-06-04T10:05:00Z",
+    )
+
+    summary = summarize_case_records(records)
+    examples = select_prompt_examples(records, min_viral_potential=4, limit=5)
+    report_path = tmp_path / "case_report.md"
+    examples_path = tmp_path / "prompt_examples.jsonl"
+
+    write_case_library_report(summary, report_path)
+    write_prompt_examples(examples, examples_path)
+
+    assert summary["total_count"] == 2
+    assert summary["reviewed_count"] == 2
+    assert summary["publishable_count"] == 1
+    assert summary["needs_revision_count"] == 1
+    assert summary["average_quality_overall"] == 84
+    assert summary["average_viral_potential"] == 3.5
+    assert summary["issue_type_counts"]["hook_weak"] == 1
+    assert summary["top_cases"][0]["record_id"] == "eval_001:coffee_beginner"
+    assert examples[0]["title"] == "标题B"
+    assert examples[0]["copywriting"] == "人工优质改稿"
+    assert "Content Case Library Report" in report_path.read_text(encoding="utf-8")
+    exported = [json.loads(line) for line in examples_path.read_text(encoding="utf-8").splitlines()]
+    assert exported[0]["record_id"] == "eval_001:coffee_beginner"
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -538,6 +633,76 @@ def test_review_cli_updates_content_case_library_record(tmp_path):
     assert records[0]["human_review"]["publishable"] is True
     assert records[0]["human_review"]["viral_potential"] == 5
     assert records[0]["human_review"]["issue_types"] == ["title_generic", "hook_weak"]
+
+
+def test_summarize_cli_writes_case_report_and_prompt_examples(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--case-library",
+            str(library_path),
+            "--run-id",
+            "eval_cli_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(completed.stdout)["case_library"]["saved_count"] == 5
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/review_xhs_content_case.py",
+            "--library",
+            str(library_path),
+            "--record-id",
+            "eval_cli_001:coffee_beginner",
+            "--status",
+            "reviewed",
+            "--publishable",
+            "true",
+            "--viral-potential",
+            "5",
+            "--selected-title",
+            "收藏：新手如何学会手冲咖啡完整流程",
+            "--edited-copywriting",
+            "人工优质改稿",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report_path = tmp_path / "case_report.md"
+    examples_path = tmp_path / "prompt_examples.jsonl"
+
+    summary = subprocess.run(
+        [
+            sys.executable,
+            "scripts/summarize_xhs_content_cases.py",
+            "--library",
+            str(library_path),
+            "--markdown",
+            str(report_path),
+            "--examples-jsonl",
+            str(examples_path),
+            "--min-viral-potential",
+            "4",
+            "--limit",
+            "3",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(summary.stdout)
+    assert payload["summary"]["total_count"] == 5
+    assert payload["summary"]["publishable_count"] == 1
+    assert payload["examples_count"] == 1
+    assert report_path.exists()
+    assert examples_path.exists()
 
 
 def test_cli_exits_nonzero_when_baseline_fails():
