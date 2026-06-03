@@ -1553,6 +1553,71 @@ def test_quality_loop_runs_dry_run_end_to_end(tmp_path):
     assert quality_examples[0]["example_source"] == "re_evaluation"
 
 
+def test_quality_loop_writes_run_report_and_replay_index(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+
+    payload = run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_report_001",
+        min_overall=95,
+        min_improvement=0,
+        min_quality_overall=85,
+        min_score_delta=3,
+    )
+
+    run_report = json.loads(payload["paths"]["run_report"].read_text(encoding="utf-8"))
+    index_rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["paths"]["replay_index"] == index_path
+    assert run_report["schema_version"] == "xhs_quality_loop_run.v1"
+    assert run_report["run_id"] == "loop_report_001"
+    assert run_report["parameters"]["min_overall"] == 95
+    assert run_report["metrics"]["revision_request_count"] == 5
+    assert run_report["metrics"]["quality_examples_count"] == 5
+    assert run_report["artifacts"]["quality_examples"].endswith("xhs-quality-prompt-examples.jsonl")
+    assert run_report["replay"]["command"][0:3] == ["uv", "run", "python"]
+    assert index_rows[-1]["schema_version"] == "xhs_quality_loop_index.v1"
+    assert index_rows[-1]["run_id"] == "loop_report_001"
+    assert index_rows[-1]["run_report"] == str(payload["paths"]["run_report"])
+    assert index_rows[-1]["quality_examples_count"] == 5
+
+
+def test_quality_loop_replay_index_keeps_distinct_run_reports(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+
+    first_payload = run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_history_001",
+        min_overall=95,
+    )
+    second_payload = run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_history_002",
+        min_overall=95,
+    )
+
+    index_rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(index_rows) == 2
+    assert index_rows[0]["run_report"] == str(first_payload["paths"]["run_report"])
+    assert index_rows[1]["run_report"] == str(second_payload["paths"]["run_report"])
+    assert index_rows[0]["run_report"] != index_rows[1]["run_report"]
+    assert first_payload["paths"]["run_report"].exists()
+    assert second_payload["paths"]["run_report"].exists()
+
+
 def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
     report_dir = tmp_path / "loop_reports"
 
@@ -1584,6 +1649,39 @@ def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
     assert payload["quality_examples"]["count"] == 5
     assert payload["paths"]["quality_examples"] == str(quality_examples_path)
     assert len(quality_examples) == 5
+
+
+def test_quality_loop_cli_writes_replay_index(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_loop.py",
+            "--report-dir",
+            str(report_dir),
+            "--replay-index",
+            str(index_path),
+            "--run-id",
+            "loop_index_cli_001",
+            "--min-overall",
+            "95",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    index_rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["paths"]["replay_index"] == str(index_path)
+    assert payload["paths"]["run_report"].endswith("xhs-quality-loop-run.json")
+    assert index_rows[-1]["run_id"] == "loop_index_cli_001"
+    assert index_rows[-1]["run_report"] == payload["paths"]["run_report"]
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):

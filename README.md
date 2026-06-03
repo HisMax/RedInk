@@ -247,6 +247,13 @@ Run the full local quality loop in one command:
 make xhs-quality-loop
 ```
 
+Each loop run writes a full run report and appends a compact replay index:
+
+```text
+reports/xhs-quality-loop/runs/<run>/xhs-quality-loop-run.json
+reports/xhs-quality-loop/xhs-quality-loop-index.jsonl
+```
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

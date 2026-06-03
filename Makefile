@@ -38,6 +38,7 @@ REEVAL_UPDATE_LIBRARY ?= 0
 REEVAL_REPORT_ONLY ?= 0
 LOOP_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-loop
 LOOP_CASE_LIBRARY ?= $(LOOP_REPORT_DIR)/xhs-content-cases.jsonl
+LOOP_REPLAY_INDEX ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-index.jsonl
 LOOP_RUN_ID ?= xhs_quality_loop
 LOOP_MIN_OVERALL ?= 95
 LOOP_MIN_IMPROVEMENT ?= 0
@@ -115,6 +116,7 @@ REEVAL_ARGS += --report-only
 endif
 
 LOOP_ARGS := --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
+LOOP_ARGS += --replay-index "$(LOOP_REPLAY_INDEX)"
 LOOP_ARGS += --run-id "$(LOOP_RUN_ID)"
 LOOP_ARGS += --min-overall "$(LOOP_MIN_OVERALL)"
 LOOP_ARGS += --min-improvement "$(LOOP_MIN_IMPROVEMENT)"

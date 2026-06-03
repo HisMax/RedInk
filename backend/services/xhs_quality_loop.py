@@ -4,6 +4,7 @@ One-command Xiaohongshu quality improvement loop.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -49,6 +50,7 @@ def run_quality_loop(
     cases_path: str | Path = DEFAULT_CASES_PATH,
     report_dir: str | Path = "reports/xhs-quality-loop",
     case_library_path: Optional[str | Path] = None,
+    replay_index_path: Optional[str | Path] = None,
     run_id: str = "xhs_quality_loop",
     min_overall: int = 95,
     min_improvement: int = 0,
@@ -65,7 +67,10 @@ def run_quality_loop(
     report_path = Path(report_dir)
     report_path.mkdir(parents=True, exist_ok=True)
     case_library = Path(case_library_path) if case_library_path else report_path / "xhs-content-cases.jsonl"
-    paths = _build_paths(report_path, case_library)
+    replay_index = Path(replay_index_path) if replay_index_path else report_path / "xhs-quality-loop-index.jsonl"
+    created_at = _utc_now()
+    run_report = report_path / "runs" / _safe_id(f"{run_id}_{created_at}") / "xhs-quality-loop-run.json"
+    paths = _build_paths(report_path, case_library, replay_index, run_report)
 
     prompt_examples = []
     if prompt_examples_path:
@@ -141,7 +146,7 @@ def run_quality_loop(
     write_prompt_examples(manual_examples, paths["manual_examples"])
     write_prompt_examples(quality_examples, paths["quality_examples"])
 
-    return {
+    payload = {
         "run_id": run_id,
         "mode": _mode_payload(live_content, live_revision, live_re_evaluation),
         "paths": paths,
@@ -179,6 +184,28 @@ def run_quality_loop(
             "path": paths["quality_examples"],
         },
     }
+    run_report = _build_run_report(
+        payload,
+        cases_path=cases_path,
+        report_dir=report_path,
+        case_library=case_library,
+        replay_index=replay_index,
+        run_id=run_id,
+        min_overall=min_overall,
+        min_improvement=min_improvement,
+        min_quality_overall=min_quality_overall,
+        min_score_delta=min_score_delta,
+        limit=limit,
+        live_content=live_content,
+        live_revision=live_revision,
+        live_re_evaluation=live_re_evaluation,
+        prompt_examples_path=prompt_examples_path,
+        prompt_examples_limit=prompt_examples_limit,
+        created_at=created_at,
+    )
+    _write_run_report(run_report, paths["run_report"])
+    _append_replay_index(run_report, paths["replay_index"])
+    return payload
 
 
 def build_dry_run_revision_results(
@@ -214,7 +241,12 @@ def build_dry_run_revision_results(
     return results
 
 
-def _build_paths(report_dir: Path, case_library: Path) -> Dict[str, Path]:
+def _build_paths(
+    report_dir: Path,
+    case_library: Path,
+    replay_index: Path,
+    run_report: Path,
+) -> Dict[str, Path]:
     return {
         "report_dir": report_dir,
         "case_library": case_library,
@@ -227,7 +259,198 @@ def _build_paths(report_dir: Path, case_library: Path) -> Dict[str, Path]:
         "case_report": report_dir / "xhs-content-case-report.md",
         "manual_examples": report_dir / "xhs-prompt-examples.jsonl",
         "quality_examples": report_dir / "xhs-quality-prompt-examples.jsonl",
+        "run_report": run_report,
+        "replay_index": replay_index,
     }
+
+
+def _build_run_report(
+    payload: Dict[str, Any],
+    *,
+    cases_path: str | Path,
+    report_dir: Path,
+    case_library: Path,
+    replay_index: Path,
+    run_id: str,
+    min_overall: int,
+    min_improvement: int,
+    min_quality_overall: int,
+    min_score_delta: int,
+    limit: int,
+    live_content: bool,
+    live_revision: bool,
+    live_re_evaluation: bool,
+    prompt_examples_path: Optional[str | Path],
+    prompt_examples_limit: int,
+    created_at: str,
+) -> Dict[str, Any]:
+    metrics = _metrics_payload(payload)
+    return {
+        "schema_version": "xhs_quality_loop_run.v1",
+        "run_id": run_id,
+        "created_at": created_at,
+        "mode": payload["mode"],
+        "parameters": {
+            "cases_path": str(cases_path),
+            "report_dir": str(report_dir),
+            "case_library_path": str(case_library),
+            "replay_index_path": str(replay_index),
+            "run_id": run_id,
+            "min_overall": min_overall,
+            "min_improvement": min_improvement,
+            "min_quality_overall": min_quality_overall,
+            "min_score_delta": min_score_delta,
+            "limit": limit,
+            "live_content": live_content,
+            "live_revision": live_revision,
+            "live_re_evaluation": live_re_evaluation,
+            "prompt_examples_path": str(prompt_examples_path) if prompt_examples_path else None,
+            "prompt_examples_limit": prompt_examples_limit,
+        },
+        "artifacts": _artifact_payload(payload["paths"]),
+        "metrics": metrics,
+        "gates": {
+            "baseline": payload["baseline"],
+            "re_evaluation": payload["re_evaluation"]["comparison"],
+        },
+        "replay": {
+            "command": _replay_command(
+                cases_path=cases_path,
+                report_dir=report_dir,
+                case_library=case_library,
+                replay_index=replay_index,
+                run_id=run_id,
+                min_overall=min_overall,
+                min_improvement=min_improvement,
+                min_quality_overall=min_quality_overall,
+                min_score_delta=min_score_delta,
+                limit=limit,
+                live_content=live_content,
+                live_revision=live_revision,
+                live_re_evaluation=live_re_evaluation,
+                prompt_examples_path=prompt_examples_path,
+                prompt_examples_limit=prompt_examples_limit,
+            ),
+        },
+    }
+
+
+def _metrics_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    baseline = payload["baseline"]
+    comparison = payload["re_evaluation"]["comparison"]
+    return {
+        "evaluation_case_count": payload["evaluation"]["case_count"],
+        "evaluation_success_count": payload["evaluation"]["success_count"],
+        "baseline_failed_count": baseline.get("failed_count", 0),
+        "revision_request_count": payload["revision"]["request_count"],
+        "revision_result_count": payload["revision"]["result_count"],
+        "revised_case_count": payload["revision"]["revised_case_count"],
+        "re_evaluation_candidate_count": payload["re_evaluation"]["candidate_count"],
+        "re_evaluation_updated_count": payload["re_evaluation"]["updated_count"],
+        "re_evaluation_improved_count": comparison.get("improved_count", 0),
+        "case_library_record_count": payload["case_library"]["record_count"],
+        "manual_examples_count": payload["manual_examples"]["count"],
+        "quality_examples_count": payload["quality_examples"]["count"],
+    }
+
+
+def _artifact_payload(paths: Dict[str, Path]) -> Dict[str, str]:
+    return {key: str(path) for key, path in paths.items()}
+
+
+def _replay_command(
+    *,
+    cases_path: str | Path,
+    report_dir: Path,
+    case_library: Path,
+    replay_index: Path,
+    run_id: str,
+    min_overall: int,
+    min_improvement: int,
+    min_quality_overall: int,
+    min_score_delta: int,
+    limit: int,
+    live_content: bool,
+    live_revision: bool,
+    live_re_evaluation: bool,
+    prompt_examples_path: Optional[str | Path],
+    prompt_examples_limit: int,
+) -> List[str]:
+    command = [
+        "uv",
+        "run",
+        "python",
+        "scripts/run_xhs_quality_loop.py",
+        "--cases",
+        str(cases_path),
+        "--report-dir",
+        str(report_dir),
+        "--case-library",
+        str(case_library),
+        "--replay-index",
+        str(replay_index),
+        "--run-id",
+        run_id,
+        "--min-overall",
+        str(min_overall),
+        "--min-improvement",
+        str(min_improvement),
+        "--min-quality-overall",
+        str(min_quality_overall),
+        "--min-score-delta",
+        str(min_score_delta),
+        "--limit",
+        str(limit),
+    ]
+    if prompt_examples_path:
+        command.extend([
+            "--prompt-examples-jsonl",
+            str(prompt_examples_path),
+            "--prompt-examples-limit",
+            str(prompt_examples_limit),
+        ])
+    if live_content:
+        command.append("--live-content")
+    if live_revision:
+        command.append("--live-revision")
+    if live_re_evaluation:
+        command.append("--live-re-evaluation")
+    return command
+
+
+def _write_run_report(report: Dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_jsonable(report), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _append_replay_index(report: Dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "schema_version": "xhs_quality_loop_index.v1",
+        "run_id": report["run_id"],
+        "created_at": report["created_at"],
+        "run_report": report["artifacts"]["run_report"],
+        "evaluation_case_count": report["metrics"]["evaluation_case_count"],
+        "baseline_failed_count": report["metrics"]["baseline_failed_count"],
+        "revision_request_count": report["metrics"]["revision_request_count"],
+        "re_evaluation_candidate_count": report["metrics"]["re_evaluation_candidate_count"],
+        "quality_examples_count": report["metrics"]["quality_examples_count"],
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value
 
 
 def _mode_payload(

@@ -259,6 +259,13 @@ make eval-quality EVAL_LIVE=1 EVAL_PROMPT_EXAMPLES=reports/xhs-quality-prompt-ex
 make xhs-quality-loop
 ```
 
+每次闭环都会写入完整运行报告，并追加一条轻量回放索引：
+
+```text
+reports/xhs-quality-loop/runs/<run>/xhs-quality-loop-run.json
+reports/xhs-quality-loop/xhs-quality-loop-index.jsonl
+```
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash

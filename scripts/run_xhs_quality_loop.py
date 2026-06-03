@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", default="tests/fixtures/xhs_quality_cases.json", help="Path to quality cases JSON.")
     parser.add_argument("--report-dir", default="reports/xhs-quality-loop", help="Output report directory.")
     parser.add_argument("--case-library", help="Optional case library JSONL path. Defaults under --report-dir.")
+    parser.add_argument("--replay-index", help="Optional replay index JSONL path. Defaults under --report-dir.")
     parser.add_argument("--run-id", default="xhs_quality_loop", help="Loop run id.")
     parser.add_argument("--min-overall", type=int, default=95, help="Minimum first-pass overall score.")
     parser.add_argument("--min-improvement", type=int, default=0, help="Minimum re-evaluation score lift.")
@@ -38,6 +39,7 @@ def main() -> int:
         cases_path=args.cases,
         report_dir=args.report_dir,
         case_library_path=args.case_library,
+        replay_index_path=args.replay_index,
         run_id=args.run_id,
         min_overall=args.min_overall,
         min_improvement=args.min_improvement,
