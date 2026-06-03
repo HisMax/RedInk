@@ -323,6 +323,13 @@ Run the complete release sequence as one gated pipeline:
 make release-eval-cases
 ```
 
+The release pipeline also writes a compact audit summary:
+
+```text
+reports/xhs-quality-loop/xhs-eval-set-release-summary.json
+reports/xhs-quality-loop/xhs-eval-set-release-summary.md
+```
+
 Mark the candidate as the current recommended eval set only after A/B and the
 history dashboard gate are low risk:
 

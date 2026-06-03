@@ -335,6 +335,13 @@ reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
 make release-eval-cases
 ```
 
+发布流水线也会写入一份轻量审计单：
+
+```text
+reports/xhs-quality-loop/xhs-eval-set-release-summary.json
+reports/xhs-quality-loop/xhs-eval-set-release-summary.md
+```
+
 只有 A/B 和历史看板门禁都显示低风险后，才把候选评测集标记为当前推荐集：
 
 ```bash

@@ -67,6 +67,8 @@ LOOP_PROMOTED_VERSION_ID ?= xhs_quality_cases_next
 LOOP_PROMOTE_APPROVED ?= 0
 LOOP_RECOMMENDED_CASES ?= $(LOOP_REPORT_DIR)/xhs-quality-cases.recommended.json
 LOOP_MARK_RECOMMENDED ?= 0
+LOOP_RELEASE_SUMMARY_JSON ?= $(LOOP_REPORT_DIR)/xhs-eval-set-release-summary.json
+LOOP_RELEASE_SUMMARY_MARKDOWN ?= $(LOOP_REPORT_DIR)/xhs-eval-set-release-summary.md
 AB_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-ab
 AB_BASE_CASES ?= tests/fixtures/xhs_quality_cases.json
 AB_CANDIDATE_CASES ?= $(LOOP_PROMOTED_CASES)
@@ -210,6 +212,9 @@ endif
 
 RESOLVE_RECOMMENDED_CASES = $(PYTHON) scripts/resolve_xhs_recommended_eval_set.py --recommended-manifest "$(LOOP_RECOMMENDED_CASES)" --print-cases
 
+EVAL_RELEASE_SUMMARY_ARGS := --recommended-manifest "$(LOOP_RECOMMENDED_CASES)" --ab-index "$(LOOP_AB_INDEX)"
+EVAL_RELEASE_SUMMARY_ARGS += --json "$(LOOP_RELEASE_SUMMARY_JSON)" --markdown "$(LOOP_RELEASE_SUMMARY_MARKDOWN)"
+
 AB_ARGS := --base-cases "$(AB_BASE_CASES)" --candidate-cases "$(AB_CANDIDATE_CASES)"
 AB_ARGS += --report-dir "$(AB_REPORT_DIR)" --run-id "$(AB_RUN_ID)"
 AB_ARGS += --min-overall "$(AB_MIN_OVERALL)" --max-score-drop "$(AB_MAX_SCORE_DROP)"
@@ -222,7 +227,7 @@ ifeq ($(AB_REPORT_ONLY),1)
 AB_ARGS += --report-only
 endif
 
-.PHONY: eval-quality eval-quality-recommended eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop xhs-quality-loop-recommended summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases release-eval-cases test-quality
+.PHONY: eval-quality eval-quality-recommended eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop xhs-quality-loop-recommended summarize-loop summarize-eval-release draft-improvements apply-improvements promote-eval-cases recommend-eval-cases release-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -262,6 +267,10 @@ summarize-loop:
 	@mkdir -p "$(LOOP_REPORT_DIR)"
 	@$(PYTHON) scripts/summarize_xhs_quality_loop.py $(LOOP_HISTORY_ARGS)
 
+summarize-eval-release:
+	@mkdir -p "$(dir $(LOOP_RELEASE_SUMMARY_JSON))"
+	@$(PYTHON) scripts/summarize_xhs_eval_release.py $(EVAL_RELEASE_SUMMARY_ARGS)
+
 draft-improvements:
 	@mkdir -p "$(LOOP_IMPROVEMENT_DRAFT_DIR)"
 	@$(PYTHON) scripts/draft_xhs_improvements.py $(DRAFT_IMPROVEMENT_ARGS)
@@ -283,6 +292,7 @@ release-eval-cases:
 	@$(MAKE) eval-quality-ab
 	@$(MAKE) summarize-loop
 	@$(MAKE) recommend-eval-cases LOOP_MARK_RECOMMENDED=1
+	@$(MAKE) summarize-eval-release
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

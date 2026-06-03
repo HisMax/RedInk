@@ -246,12 +246,14 @@ def _write_recommended_manifest(
     candidate_path,
     gate=None,
     version_id="xhs_quality_cases_v2",
+    latest_run_id="ab_001",
 ):
     path.write_text(
         json.dumps({
             "schema_version": "xhs_recommended_eval_set.v1",
             "version_id": version_id,
             "candidate_cases": str(candidate_path),
+            "latest_run_id": latest_run_id,
             "gate": gate or {"eligible": True, "status": "passed", "reasons": []},
         }, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -2632,6 +2634,36 @@ def test_make_recommend_eval_cases_writes_manifest(tmp_path):
     assert manifest_path.exists() is True
 
 
+def test_make_summarize_eval_release_writes_summary(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    summary_json = tmp_path / "xhs-eval-set-release-summary.json"
+    summary_md = tmp_path / "xhs-eval-set-release-summary.md"
+    _write_recommended_manifest(manifest_path, candidate_path=candidate_path)
+    _write_ab_index_row(ab_index_path, version_id="xhs_quality_cases_v2")
+
+    completed = subprocess.run(
+        [
+            "make",
+            "summarize-eval-release",
+            f"PYTHON={sys.executable}",
+            f"LOOP_RECOMMENDED_CASES={manifest_path}",
+            f"LOOP_AB_INDEX={ab_index_path}",
+            f"LOOP_RELEASE_SUMMARY_JSON={summary_json}",
+            f"LOOP_RELEASE_SUMMARY_MARKDOWN={summary_md}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "passed"
+    assert summary_json.exists()
+    assert summary_md.exists()
+
+
 def test_make_release_eval_cases_writes_recommended_manifest(tmp_path):
     report_dir = tmp_path / "reports"
     loop_dir = report_dir / "xhs-quality-loop"
@@ -2639,6 +2671,7 @@ def test_make_release_eval_cases_writes_recommended_manifest(tmp_path):
     candidates_path = loop_dir / "xhs-eval-case-candidates.jsonl"
     promoted_path = loop_dir / "xhs-quality-cases.next.json"
     recommended_path = loop_dir / "xhs-quality-cases.recommended.json"
+    release_summary_path = loop_dir / "xhs-eval-set-release-summary.json"
     _write_eval_case_candidates(candidates_path)
 
     completed = subprocess.run(
@@ -2661,10 +2694,13 @@ def test_make_release_eval_cases_writes_recommended_manifest(tmp_path):
     )
 
     manifest = json.loads(recommended_path.read_text(encoding="utf-8"))
+    release_summary = json.loads(release_summary_path.read_text(encoding="utf-8"))
     assert completed.returncode == 0
     assert promoted_path.exists()
     assert manifest["gate"]["eligible"] is True
     assert manifest["candidate_cases"] == str(promoted_path)
+    assert release_summary["status"] == "passed"
+    assert release_summary["version_id"] == manifest["version_id"]
 
 
 def test_make_release_eval_cases_stops_before_recommendation_when_no_approved_cases(tmp_path):
@@ -2674,6 +2710,7 @@ def test_make_release_eval_cases_stops_before_recommendation_when_no_approved_ca
     candidates_path = loop_dir / "xhs-eval-case-candidates.jsonl"
     promoted_path = loop_dir / "xhs-quality-cases.next.json"
     recommended_path = loop_dir / "xhs-quality-cases.recommended.json"
+    release_summary_path = loop_dir / "xhs-eval-set-release-summary.json"
     _write_eval_case_candidates(candidates_path, approved=False)
 
     completed = subprocess.run(
@@ -2697,6 +2734,7 @@ def test_make_release_eval_cases_stops_before_recommendation_when_no_approved_ca
     assert completed.returncode != 0
     assert promoted_path.exists()
     assert recommended_path.exists() is False
+    assert release_summary_path.exists() is False
 
 
 def test_make_eval_quality_recommended_uses_manifest_cases(tmp_path):
@@ -2835,6 +2873,71 @@ def test_resolve_recommended_eval_set_cli_rejects_missing_candidate_file(tmp_pat
     assert completed.returncode == 1
     assert payload["resolved"] is False
     assert "recommended candidate cases file does not exist" in payload["reasons"]
+
+
+def test_summarize_eval_release_cli_writes_passed_summary(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    summary_json = tmp_path / "xhs-eval-set-release-summary.json"
+    summary_md = tmp_path / "xhs-eval-set-release-summary.md"
+    _write_recommended_manifest(manifest_path, candidate_path=candidate_path)
+    _write_ab_index_row(ab_index_path, version_id="xhs_quality_cases_v2")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/summarize_xhs_eval_release.py",
+            "--recommended-manifest",
+            str(manifest_path),
+            "--ab-index",
+            str(ab_index_path),
+            "--json",
+            str(summary_json),
+            "--markdown",
+            str(summary_md),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    written = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["status"] == "passed"
+    assert written["version_id"] == "xhs_quality_cases_v2"
+    assert written["latest_run_id"] == "ab_001"
+    assert summary_md.read_text(encoding="utf-8").startswith("# XHS Eval Set Release Summary")
+
+
+def test_summarize_eval_release_cli_blocks_stale_latest_run(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    summary_json = tmp_path / "xhs-eval-set-release-summary.json"
+    _write_recommended_manifest(manifest_path, candidate_path=candidate_path, latest_run_id="old_ab")
+    _write_ab_index_row(ab_index_path, version_id="xhs_quality_cases_v2", run_id="ab_001")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/summarize_xhs_eval_release.py",
+            "--recommended-manifest",
+            str(manifest_path),
+            "--ab-index",
+            str(ab_index_path),
+            "--json",
+            str(summary_json),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 1
+    assert payload["status"] == "blocked"
+    assert "latest_run_id does not match dashboard latest run" in payload["reasons"]
+    assert summary_json.exists()
 
 
 def test_quality_ab_cli_compares_base_and_versioned_candidate(tmp_path):
