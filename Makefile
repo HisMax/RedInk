@@ -36,6 +36,19 @@ REEVAL_MIN_IMPROVEMENT ?= 0
 REEVAL_LIVE ?= 0
 REEVAL_UPDATE_LIBRARY ?= 0
 REEVAL_REPORT_ONLY ?= 0
+LOOP_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-loop
+LOOP_CASE_LIBRARY ?= $(LOOP_REPORT_DIR)/xhs-content-cases.jsonl
+LOOP_RUN_ID ?= xhs_quality_loop
+LOOP_MIN_OVERALL ?= 95
+LOOP_MIN_IMPROVEMENT ?= 0
+LOOP_MIN_QUALITY_OVERALL ?= 85
+LOOP_MIN_SCORE_DELTA ?= 3
+LOOP_LIMIT ?= 20
+LOOP_PROMPT_EXAMPLES ?=
+LOOP_PROMPT_EXAMPLES_LIMIT ?= 3
+LOOP_LIVE_CONTENT ?= 0
+LOOP_LIVE_REVISION ?= 0
+LOOP_LIVE_REEVAL ?= 0
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -101,7 +114,31 @@ ifeq ($(REEVAL_REPORT_ONLY),1)
 REEVAL_ARGS += --report-only
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions test-quality
+LOOP_ARGS := --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
+LOOP_ARGS += --run-id "$(LOOP_RUN_ID)"
+LOOP_ARGS += --min-overall "$(LOOP_MIN_OVERALL)"
+LOOP_ARGS += --min-improvement "$(LOOP_MIN_IMPROVEMENT)"
+LOOP_ARGS += --min-quality-overall "$(LOOP_MIN_QUALITY_OVERALL)"
+LOOP_ARGS += --min-score-delta "$(LOOP_MIN_SCORE_DELTA)"
+LOOP_ARGS += --limit "$(LOOP_LIMIT)"
+
+ifneq ($(strip $(LOOP_PROMPT_EXAMPLES)),)
+LOOP_ARGS += --prompt-examples-jsonl "$(LOOP_PROMPT_EXAMPLES)" --prompt-examples-limit "$(LOOP_PROMPT_EXAMPLES_LIMIT)"
+endif
+
+ifeq ($(LOOP_LIVE_CONTENT),1)
+LOOP_ARGS += --live-content
+endif
+
+ifeq ($(LOOP_LIVE_REVISION),1)
+LOOP_ARGS += --live-revision
+endif
+
+ifeq ($(LOOP_LIVE_REEVAL),1)
+LOOP_ARGS += --live-re-evaluation
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -118,6 +155,10 @@ plan-revisions:
 re-eval-revisions:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_re_evaluation.py $(REEVAL_ARGS)
+
+xhs-quality-loop:
+	@mkdir -p "$(LOOP_REPORT_DIR)"
+	@$(PYTHON) scripts/run_xhs_quality_loop.py $(LOOP_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

@@ -241,6 +241,18 @@ Use verified quality examples to guide the next live generation run:
 make eval-quality EVAL_LIVE=1 EVAL_PROMPT_EXAMPLES=reports/xhs-quality-prompt-examples.jsonl
 ```
 
+Run the full local quality loop in one command:
+
+```bash
+make xhs-quality-loop
+```
+
+Enable live services step by step when your provider config is ready:
+
+```bash
+make xhs-quality-loop LOOP_LIVE_CONTENT=1 LOOP_LIVE_REVISION=1 LOOP_LIVE_REEVAL=1
+```
+
 Plan second-pass revisions for cases that failed gates or human review:
 
 ```bash

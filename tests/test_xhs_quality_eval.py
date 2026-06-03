@@ -35,6 +35,7 @@ from backend.services.xhs_quality_eval import (
     write_jsonl_report,
     write_markdown_report,
 )
+from backend.services.xhs_quality_loop import run_quality_loop
 from backend.services.xhs_re_evaluation import (
     apply_improvement_gate,
     apply_re_evaluation_results_to_case_library,
@@ -1521,6 +1522,68 @@ def test_summarize_cli_writes_re_evaluated_prompt_examples(tmp_path):
     assert examples[0]["record_id"] == "revision_cli_001:eval_cli_001:coffee_beginner:revised"
     assert examples[0]["score_delta"] == 9
     assert examples[0]["example_source"] == "re_evaluation"
+
+
+def test_quality_loop_runs_dry_run_end_to_end(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+
+    payload = run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        run_id="loop_001",
+        min_overall=95,
+        min_improvement=0,
+        min_quality_overall=85,
+        min_score_delta=3,
+    )
+
+    case_library = load_case_records(payload["paths"]["case_library"])
+    quality_examples = [
+        json.loads(line)
+        for line in payload["paths"]["quality_examples"].read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["evaluation"]["case_count"] == 5
+    assert payload["baseline"]["failed_count"] == 5
+    assert payload["revision"]["request_count"] == 5
+    assert payload["revision"]["result_count"] == 5
+    assert payload["re_evaluation"]["candidate_count"] == 5
+    assert payload["quality_examples"]["count"] == 5
+    assert len(case_library) == 10
+    assert len(quality_examples) == 5
+    assert quality_examples[0]["example_source"] == "re_evaluation"
+
+
+def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_loop.py",
+            "--report-dir",
+            str(report_dir),
+            "--run-id",
+            "loop_cli_001",
+            "--min-overall",
+            "95",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    quality_examples_path = report_dir / "xhs-quality-prompt-examples.jsonl"
+    quality_examples = [
+        json.loads(line)
+        for line in quality_examples_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["run_id"] == "loop_cli_001"
+    assert payload["revision"]["request_count"] == 5
+    assert payload["re_evaluation"]["candidate_count"] == 5
+    assert payload["quality_examples"]["count"] == 5
+    assert payload["paths"]["quality_examples"] == str(quality_examples_path)
+    assert len(quality_examples) == 5
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):

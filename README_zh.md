@@ -253,6 +253,18 @@ make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl CASE_MIN_QUALI
 make eval-quality EVAL_LIVE=1 EVAL_PROMPT_EXAMPLES=reports/xhs-quality-prompt-examples.jsonl
 ```
 
+一条命令运行完整本地质量闭环：
+
+```bash
+make xhs-quality-loop
+```
+
+服务商配置就绪后，可以逐步打开 live 服务：
+
+```bash
+make xhs-quality-loop LOOP_LIVE_CONTENT=1 LOOP_LIVE_REVISION=1 LOOP_LIVE_REEVAL=1
+```
+
 为未过门禁或人工复盘不通过的案例生成二次改稿请求：
 
 ```bash
