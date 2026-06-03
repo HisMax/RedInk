@@ -229,6 +229,18 @@ Summarize reviewed cases and export high-quality prompt examples:
 make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl
 ```
 
+Plan second-pass revisions for cases that failed gates or human review:
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl
+```
+
+Call the live revision advisor for those planned requests:
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1
+```
+
 ---
 
 ## 🔧 Configuration

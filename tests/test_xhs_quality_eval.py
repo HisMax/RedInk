@@ -13,6 +13,12 @@ from backend.services.content_case_library import (
     write_case_library_report,
     write_prompt_examples,
 )
+from backend.services.content_revision_loop import (
+    build_revision_requests,
+    load_revision_requests,
+    run_revision_requests,
+    write_revision_requests,
+)
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
     build_case_outline,
@@ -61,6 +67,24 @@ class FakeQualityService:
                 "suggestions": ["增加收藏理由"],
             },
             "publish_gate": {"enabled": False},
+        }
+
+
+class FakeRevisionService:
+    def __init__(self):
+        self.calls = []
+
+    def suggest_revisions(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "success": True,
+            "trace_id": kwargs["trace_id"],
+            "revision": {
+                "titles": ["改后标题"],
+                "copywriting": "改后正文",
+                "tags": ["改后标签"],
+                "revision_summary": ["强化开头钩子"],
+            },
         }
 
 
@@ -501,6 +525,111 @@ def test_content_case_library_summarizes_reviews_and_exports_examples(tmp_path):
     assert exported[0]["record_id"] == "eval_001:coffee_beginner"
 
 
+def test_revision_loop_builds_requests_from_failed_or_rejected_cases(tmp_path):
+    results = [
+        {
+            "case_id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "trace_id": "trace_1",
+            "titles": ["标题A"],
+            "copywriting": "正文A",
+            "tags": ["咖啡"],
+            "overall": 79,
+            "decision": "revise",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "baseline_passed": False,
+            "baseline_reason": "overall 79 below 80",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        },
+        {
+            "case_id": "office_efficiency",
+            "category": "职场效率",
+            "topic": "打工人如何用AI整理会议纪要",
+            "trace_id": "trace_2",
+            "titles": ["标题B"],
+            "copywriting": "正文B",
+            "tags": ["AI"],
+            "overall": 88,
+            "decision": "approve",
+            "issues_count": 0,
+            "suggestions_count": 1,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        },
+    ]
+    records = build_case_records(
+        results,
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    records, _updated = update_case_review(
+        records,
+        "eval_001:coffee_beginner",
+        status="needs_revision",
+        publishable=False,
+        issue_types=["hook_weak"],
+        notes="开头没有痛点",
+        reviewed_at="2026-06-04T10:00:00Z",
+    )
+    requests = build_revision_requests(
+        records,
+        run_id="revision_001",
+        created_at="2026-06-04T12:00:00Z",
+    )
+    requests_path = tmp_path / "revision_requests.jsonl"
+    write_revision_requests(requests, requests_path)
+    loaded = load_revision_requests(requests_path)
+
+    assert len(requests) == 1
+    assert requests[0]["schema_version"] == "xhs_revision_request.v1"
+    assert requests[0]["request_id"] == "revision_001:eval_001:coffee_beginner"
+    assert requests[0]["source_record_id"] == "eval_001:coffee_beginner"
+    assert "baseline_failed" in requests[0]["trigger_reasons"]
+    assert "human_rejected" in requests[0]["trigger_reasons"]
+    assert requests[0]["revision_input"]["topic"] == "新手如何学会手冲咖啡"
+    assert requests[0]["revision_input"]["copywriting"] == "正文A"
+    assert "hook_weak" in requests[0]["revision_input"]["quality_score"]["issues"]
+    assert loaded[0]["request_id"] == requests[0]["request_id"]
+
+
+def test_revision_loop_runs_requests_with_injected_revision_service():
+    requests = [
+        {
+            "request_id": "revision_001:eval_001:coffee_beginner",
+            "source_record_id": "eval_001:coffee_beginner",
+            "revision_input": {
+                "topic": "新手如何学会手冲咖啡",
+                "outline": "类别：知识科普\n主题：新手如何学会手冲咖啡",
+                "titles": ["标题A"],
+                "copywriting": "正文A",
+                "tags": ["咖啡"],
+                "quality_score": {
+                    "issues": ["hook_weak"],
+                    "suggestions": ["强化开头钩子"],
+                },
+                "trace_id": "trace_1",
+            },
+        }
+    ]
+    service = FakeRevisionService()
+
+    results = run_revision_requests(requests, revision_service=service)
+
+    assert len(service.calls) == 1
+    assert service.calls[0]["topic"] == "新手如何学会手冲咖啡"
+    assert results[0]["schema_version"] == "xhs_revision_result.v1"
+    assert results[0]["success"] is True
+    assert results[0]["revision"]["titles"] == ["改后标题"]
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -703,6 +832,51 @@ def test_summarize_cli_writes_case_report_and_prompt_examples(tmp_path):
     assert payload["examples_count"] == 1
     assert report_path.exists()
     assert examples_path.exists()
+
+
+def test_revision_plan_cli_writes_revision_requests(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--case-library",
+            str(library_path),
+            "--run-id",
+            "eval_cli_001",
+            "--min-overall",
+            "95",
+            "--report-only",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(completed.stdout)["case_library"]["saved_count"] == 5
+    requests_path = tmp_path / "revision_requests.jsonl"
+
+    planned = subprocess.run(
+        [
+            sys.executable,
+            "scripts/plan_xhs_revisions.py",
+            "--library",
+            str(library_path),
+            "--requests-jsonl",
+            str(requests_path),
+            "--run-id",
+            "revision_cli_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(planned.stdout)
+    requests = load_revision_requests(requests_path)
+    assert payload["candidate_count"] == 5
+    assert payload["requests_jsonl"] == str(requests_path)
+    assert len(requests) == 5
+    assert requests[0]["run_id"] == "revision_cli_001"
 
 
 def test_cli_exits_nonzero_when_baseline_fails():

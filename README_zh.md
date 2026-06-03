@@ -241,6 +241,18 @@ uv run python scripts/review_xhs_content_case.py --library reports/xhs-content-c
 make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl
 ```
 
+为未过门禁或人工复盘不通过的案例生成二次改稿请求：
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl
+```
+
+调用真实 revision advisor 执行这些改稿请求：
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1
+```
+
 ---
 
 ## 🔧 配置说明

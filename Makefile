@@ -13,6 +13,12 @@ CASE_REPORT ?= $(REPORT_DIR)/xhs-content-case-report.md
 CASE_EXAMPLES ?= $(REPORT_DIR)/xhs-prompt-examples.jsonl
 CASE_MIN_VIRAL ?= 4
 CASE_LIMIT ?= 20
+REVISION_LIBRARY ?= $(CASE_LIBRARY)
+REVISION_REQUESTS ?= $(REPORT_DIR)/xhs-revision-requests.jsonl
+REVISION_RESULTS ?= $(REPORT_DIR)/xhs-revision-results.jsonl
+REVISION_RUN_ID ?= xhs_revision_loop
+REVISION_LIMIT ?=
+REVISION_LIVE ?= 0
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -36,7 +42,17 @@ ifeq ($(EVAL_REPORT_ONLY),1)
 EVAL_ARGS += --report-only
 endif
 
-.PHONY: eval-quality summarize-cases test-quality
+REVISION_ARGS := --library "$(REVISION_LIBRARY)" --requests-jsonl "$(REVISION_REQUESTS)" --run-id "$(REVISION_RUN_ID)"
+
+ifneq ($(strip $(REVISION_LIMIT)),)
+REVISION_ARGS += --limit "$(REVISION_LIMIT)"
+endif
+
+ifeq ($(REVISION_LIVE),1)
+REVISION_ARGS += --live --results-jsonl "$(REVISION_RESULTS)"
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -45,6 +61,10 @@ eval-quality:
 summarize-cases:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/summarize_xhs_content_cases.py --library "$(CASE_LIBRARY)" --markdown "$(CASE_REPORT)" --examples-jsonl "$(CASE_EXAMPLES)" --min-viral-potential "$(CASE_MIN_VIRAL)" --limit "$(CASE_LIMIT)"
+
+plan-revisions:
+	@mkdir -p "$(REPORT_DIR)"
+	@$(PYTHON) scripts/plan_xhs_revisions.py $(REVISION_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q
