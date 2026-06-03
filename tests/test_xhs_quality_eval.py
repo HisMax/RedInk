@@ -382,3 +382,49 @@ def test_cli_exits_nonzero_when_trend_comparison_fails(tmp_path):
     assert payload["comparison"]["passed"] is False
     assert payload["comparison"]["failed_count"] == 1
     assert payload["results"][0]["trend_passed"] is False
+
+
+def test_make_eval_quality_runs_dry_run_report(tmp_path):
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality",
+            f"REPORT_DIR={tmp_path}",
+            f"PYTHON={sys.executable}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["baseline"]["passed"] is True
+    assert (tmp_path / "xhs-quality-eval.jsonl").exists()
+    assert (tmp_path / "xhs-quality-eval.md").exists()
+
+
+def test_make_eval_quality_can_compare_previous_report(tmp_path):
+    previous_path = tmp_path / "previous.jsonl"
+    previous_path.write_text(
+        json.dumps({"case_id": "coffee_beginner", "overall": 95}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality",
+            f"REPORT_DIR={tmp_path}",
+            f"PYTHON={sys.executable}",
+            f"EVAL_PREVIOUS={previous_path}",
+            "EVAL_MAX_SCORE_DROP=3",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode != 0
+    assert payload["baseline"]["passed"] is True
+    assert payload["comparison"]["passed"] is False
+    assert payload["comparison"]["failed_count"] == 1

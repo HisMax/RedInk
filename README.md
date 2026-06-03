@@ -191,6 +191,26 @@ pnpm dev
 ```
 Visit: http://localhost:5173
 
+### 6. Content Quality Evaluation
+
+Run the default dry-run evaluation without model calls and write JSONL/Markdown reports:
+
+```bash
+make eval-quality
+```
+
+Compare against a previous report and fail when the score drop exceeds the threshold:
+
+```bash
+make eval-quality EVAL_PREVIOUS=reports/xhs-quality-eval.jsonl EVAL_MAX_SCORE_DROP=3
+```
+
+Call the live content and quality services:
+
+```bash
+make eval-quality EVAL_LIVE=1
+```
+
 ---
 
 ## 🔧 Configuration

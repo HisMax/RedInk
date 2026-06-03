@@ -203,6 +203,26 @@ pnpm dev
 ```
 访问: http://localhost:5173
 
+### 6. 内容质量评测
+
+默认 dry-run，不调用模型，生成 JSONL 和 Markdown 报告：
+
+```bash
+make eval-quality
+```
+
+对比上一轮报告并在分数退步超过阈值时失败：
+
+```bash
+make eval-quality EVAL_PREVIOUS=reports/xhs-quality-eval.jsonl EVAL_MAX_SCORE_DROP=3
+```
+
+调用真实文案和质量评分服务：
+
+```bash
+make eval-quality EVAL_LIVE=1
+```
+
 ---
 
 ## 🔧 配置说明
