@@ -100,6 +100,22 @@ def load_case_records(path: str | Path) -> List[Dict[str, Any]]:
         return [json.loads(line) for line in f if line.strip()]
 
 
+def load_prompt_examples(path: str | Path, *, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Load prompt examples from JSONL."""
+    examples_path = Path(path)
+    if not examples_path.exists():
+        return []
+    examples = []
+    with examples_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            examples.append(json.loads(line))
+            if limit is not None and len(examples) >= limit:
+                break
+    return examples
+
+
 def update_case_review(
     records: Iterable[Dict[str, Any]],
     record_id: str,

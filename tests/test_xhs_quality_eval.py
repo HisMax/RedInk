@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 
+from backend.services.content import ContentService
 from backend.services.content_case_library import (
     append_case_records,
     build_case_records,
@@ -53,6 +54,34 @@ class FakeContentService:
             "copywriting": f"{topic} 正文，包含清晰步骤和用户收益。",
             "tags": ["小红书", "内容创作"],
         }
+
+
+class FakePromptExampleContentService:
+    def __init__(self):
+        self.calls = []
+
+    def generate_content(self, topic, outline, prompt_examples=None):
+        self.calls.append({
+            "topic": topic,
+            "outline": outline,
+            "prompt_examples": prompt_examples,
+        })
+        return {
+            "success": True,
+            "titles": [f"{topic} 标题"],
+            "copywriting": f"{topic} 正文，参考了已验证样本。",
+            "tags": ["小红书", "内容创作"],
+        }
+
+
+class FakeTextClient:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def generate_text(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.response
 
 
 class FakeQualityService:
@@ -147,6 +176,44 @@ def test_build_case_outline_includes_expected_traits():
     assert "- 有参数" in outline
 
 
+def test_content_service_injects_quality_prompt_examples():
+    client = FakeTextClient(json.dumps({
+        "titles": ["新标题"],
+        "copywriting": "新正文",
+        "tags": ["咖啡", "新手"],
+    }, ensure_ascii=False))
+    service = ContentService(
+        client=client,
+        text_config={"active_provider": "fake", "providers": {"fake": {"model": "fake-model"}}},
+        prompt_template="topic={topic}\noutline={outline}",
+    )
+
+    result = service.generate_content(
+        topic="新手如何学会手冲咖啡",
+        outline="原始大纲",
+        prompt_examples=[
+            {
+                "topic": "新手如何学会手冲咖啡",
+                "title": "改后标题",
+                "copywriting": "改后正文",
+                "tags": ["咖啡", "新手"],
+                "quality_overall": 93,
+                "previous_overall": 88,
+                "score_delta": 5,
+                "revision_summary": ["强化钩子和行动路径"],
+            }
+        ],
+    )
+
+    prompt = client.calls[0]["prompt"]
+    assert result["success"] is True
+    assert "已验证优质样本参考" in prompt
+    assert "改后标题" in prompt
+    assert "质量分：93" in prompt
+    assert "提升：+5" in prompt
+    assert "强化钩子和行动路径" in prompt
+
+
 def test_run_quality_eval_dry_run_returns_summary_without_services():
     cases = [
         {
@@ -198,6 +265,39 @@ def test_run_quality_eval_live_uses_injected_services():
     assert results[0]["overall"] == 87
     assert results[0]["issues_count"] == 1
     assert results[0]["suggestions_count"] == 1
+
+
+def test_run_quality_eval_live_passes_prompt_examples_to_content_service():
+    cases = [
+        {
+            "id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "expected_traits": ["有具体步骤"],
+        }
+    ]
+    prompt_examples = [
+        {
+            "topic": "新手如何学会手冲咖啡",
+            "title": "改后标题",
+            "copywriting": "改后正文",
+            "quality_overall": 93,
+            "score_delta": 5,
+        }
+    ]
+    content_service = FakePromptExampleContentService()
+    quality_service = FakeQualityService()
+
+    results = run_quality_eval(
+        cases,
+        live=True,
+        content_service=content_service,
+        quality_service=quality_service,
+        prompt_examples=prompt_examples,
+    )
+
+    assert results[0]["error"] is None
+    assert content_service.calls[0]["prompt_examples"] == prompt_examples
 
 
 def test_apply_quality_baseline_marks_failures_by_score_decision_and_error():
@@ -1136,6 +1236,39 @@ def test_cli_dry_run_outputs_summary_json():
     assert payload["case_count"] == 5
     assert len(payload["results"]) == 5
     assert payload["baseline"]["passed"] is True
+
+
+def test_cli_loads_prompt_examples_for_quality_eval(tmp_path):
+    examples_path = tmp_path / "quality_examples.jsonl"
+    examples_path.write_text(
+        json.dumps({
+            "record_id": "revision_001:eval_001:coffee_beginner:revised",
+            "topic": "新手如何学会手冲咖啡",
+            "title": "改后标题",
+            "copywriting": "改后正文",
+            "quality_overall": 93,
+            "score_delta": 5,
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--prompt-examples-jsonl",
+            str(examples_path),
+            "--prompt-examples-limit",
+            "1",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["prompt_examples"]["path"] == str(examples_path)
+    assert payload["prompt_examples"]["loaded_count"] == 1
 
 
 def test_cli_can_append_content_case_library(tmp_path):

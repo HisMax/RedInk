@@ -9,7 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
-from backend.services.content_case_library import append_case_records, build_case_records
+from backend.services.content_case_library import append_case_records, build_case_records, load_prompt_examples
 from backend.services.xhs_quality_eval import (
     DEFAULT_ALLOWED_DECISIONS,
     DEFAULT_CASES_PATH,
@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jsonl", help="Optional path for JSONL report output.")
     parser.add_argument("--markdown", help="Optional path for Markdown report output.")
     parser.add_argument("--case-library", help="Optional JSONL content case library path to append.")
+    parser.add_argument("--prompt-examples-jsonl", help="Optional JSONL prompt examples to guide live generation.")
+    parser.add_argument("--prompt-examples-limit", type=int, default=3, help="Maximum prompt examples to load.")
     parser.add_argument("--run-id", help="Stable run id for reports and case library records.")
     parser.add_argument("--min-overall", type=int, default=DEFAULT_MIN_OVERALL, help="Minimum overall score.")
     parser.add_argument(
@@ -58,7 +60,24 @@ def main() -> int:
     args = parse_args()
     run_id = args.run_id or "xhs_quality_eval"
     cases = load_quality_cases(args.cases)
-    results = run_quality_eval(cases, live=args.live)
+    prompt_examples = []
+    prompt_examples_payload = None
+    if args.prompt_examples_jsonl:
+        prompt_examples = load_prompt_examples(
+            args.prompt_examples_jsonl,
+            limit=args.prompt_examples_limit,
+        )
+        prompt_examples_payload = {
+            "path": args.prompt_examples_jsonl,
+            "loaded_count": len(prompt_examples),
+            "limit": args.prompt_examples_limit,
+        }
+
+    results = run_quality_eval(
+        cases,
+        live=args.live,
+        prompt_examples=prompt_examples,
+    )
     allowed_decisions = args.allowed_decisions or list(DEFAULT_ALLOWED_DECISIONS)
     results, baseline = apply_quality_baseline(
         results,
@@ -100,6 +119,7 @@ def main() -> int:
         "baseline": baseline,
         "comparison": comparison,
         "case_library": case_library,
+        "prompt_examples": prompt_examples_payload,
         "results": results,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

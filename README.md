@@ -235,6 +235,12 @@ The same command also exports re-evaluated revision examples that meet the quali
 make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl CASE_MIN_QUALITY_OVERALL=85 CASE_MIN_SCORE_DELTA=3
 ```
 
+Use verified quality examples to guide the next live generation run:
+
+```bash
+make eval-quality EVAL_LIVE=1 EVAL_PROMPT_EXAMPLES=reports/xhs-quality-prompt-examples.jsonl
+```
+
 Plan second-pass revisions for cases that failed gates or human review:
 
 ```bash

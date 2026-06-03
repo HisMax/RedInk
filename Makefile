@@ -8,6 +8,8 @@ EVAL_MIN_OVERALL ?= 80
 EVAL_MAX_SCORE_DROP ?= 3
 EVAL_LIVE ?= 0
 EVAL_REPORT_ONLY ?= 0
+EVAL_PROMPT_EXAMPLES ?=
+EVAL_PROMPT_EXAMPLES_LIMIT ?= 3
 CASE_LIBRARY ?= reports/xhs-content-cases.jsonl
 CASE_REPORT ?= $(REPORT_DIR)/xhs-content-case-report.md
 CASE_EXAMPLES ?= $(REPORT_DIR)/xhs-prompt-examples.jsonl
@@ -47,6 +49,10 @@ endif
 
 ifneq ($(strip $(EVAL_PREVIOUS)),)
 EVAL_ARGS += --compare-jsonl "$(EVAL_PREVIOUS)"
+endif
+
+ifneq ($(strip $(EVAL_PROMPT_EXAMPLES)),)
+EVAL_ARGS += --prompt-examples-jsonl "$(EVAL_PROMPT_EXAMPLES)" --prompt-examples-limit "$(EVAL_PROMPT_EXAMPLES_LIMIT)"
 endif
 
 ifeq ($(EVAL_LIVE),1)

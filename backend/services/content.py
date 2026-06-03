@@ -19,11 +19,16 @@ logger = logging.getLogger(__name__)
 class ContentService:
     """内容生成服务：生成标题、文案、标签"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        client: Optional[Any] = None,
+        text_config: Optional[Dict[str, Any]] = None,
+        prompt_template: Optional[str] = None,
+    ):
         logger.debug("初始化 ContentService...")
-        self.text_config = self._load_text_config()
-        self.client = self._get_client()
-        self.prompt_template = self._load_prompt_template()
+        self.text_config = text_config or self._load_text_config()
+        self.client = client or self._get_client()
+        self.prompt_template = prompt_template or self._load_prompt_template()
         logger.info(f"ContentService 初始化完成，使用服务商: {self.text_config.get('active_provider')}")
 
     def _load_text_config(self) -> dict:
@@ -103,6 +108,49 @@ class ContentService:
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
+    def _build_outline_with_examples(
+        self,
+        outline: str,
+        prompt_examples: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Append validated prompt examples to the outline when provided."""
+        examples_text = self._format_prompt_examples(prompt_examples or [])
+        if not examples_text:
+            return outline
+        return (
+            f"{outline}\n\n"
+            "已验证优质样本参考：\n"
+            f"{examples_text}\n\n"
+            "生成时请学习以上样本的标题钩子、正文结构、信息密度和行动路径，"
+            "但不要照抄具体表达。"
+        )
+
+    def _format_prompt_examples(self, prompt_examples: List[Dict[str, Any]]) -> str:
+        """Format a small set of quality examples for prompt injection."""
+        lines = []
+        for index, example in enumerate(prompt_examples[:3], start=1):
+            title = example.get("title") or _first(example.get("titles")) or ""
+            copywriting = (example.get("copywriting") or "")[:600]
+            tags = "、".join(_as_list(example.get("tags")))
+            quality_overall = example.get("quality_overall")
+            previous_overall = example.get("previous_overall")
+            score_delta = example.get("score_delta")
+            revision_summary = "；".join(_as_list(example.get("revision_summary")))
+            lines.extend([
+                f"样本 {index}：",
+                f"- 主题：{example.get('topic', '')}",
+                f"- 标题：{title}",
+                f"- 正文：{copywriting}",
+                f"- 标签：{tags}",
+                (
+                    f"- 质量分：{_format_optional_number(quality_overall)}"
+                    f"；原分：{_format_optional_number(previous_overall)}"
+                    f"；提升：{_format_delta(score_delta)}"
+                ),
+                f"- 改稿摘要：{revision_summary}",
+            ])
+        return "\n".join(lines)
+
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
         """解析 AI 返回的 JSON 响应"""
         # 尝试直接解析
@@ -134,7 +182,8 @@ class ContentService:
     def generate_content(
         self,
         topic: str,
-        outline: str
+        outline: str,
+        prompt_examples: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         生成标题、文案和标签
@@ -149,10 +198,12 @@ class ContentService:
         try:
             logger.info(f"开始生成内容: topic={topic[:50]}...")
 
+            enhanced_outline = self._build_outline_with_examples(outline, prompt_examples)
+
             # 构建提示词
             prompt = self.prompt_template.format(
                 topic=topic,
-                outline=outline
+                outline=enhanced_outline,
             )
 
             # 从配置中获取模型参数
@@ -248,3 +299,37 @@ def get_content_service() -> ContentService:
     每次调用都创建新实例以确保配置是最新的
     """
     return ContentService()
+
+
+def _first(value: Any) -> Any:
+    values = _as_list(value)
+    return values[0] if values else None
+
+
+def _as_list(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _format_optional_number(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    return _format_number(value)
+
+
+def _format_delta(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    formatted = _format_number(value)
+    if value > 0:
+        return f"+{formatted}"
+    return formatted
+
+
+def _format_number(value: int | float) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)

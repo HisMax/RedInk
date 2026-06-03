@@ -70,6 +70,7 @@ def run_quality_eval(
     live: bool = False,
     content_service: Optional[Any] = None,
     quality_service: Optional[Any] = None,
+    prompt_examples: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Run dry-run or live quality evaluation for a sequence of cases."""
     if live:
@@ -87,7 +88,14 @@ def run_quality_eval(
         outline = build_case_outline(case)
         try:
             if live:
-                content = content_service.generate_content(case["topic"], outline)
+                if prompt_examples:
+                    content = content_service.generate_content(
+                        case["topic"],
+                        outline,
+                        prompt_examples=prompt_examples,
+                    )
+                else:
+                    content = content_service.generate_content(case["topic"], outline)
                 if not content.get("success"):
                     results.append(_error_result(case, content.get("error", "内容生成失败")))
                     continue

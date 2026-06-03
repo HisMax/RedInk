@@ -39,8 +39,13 @@ def create_content_blueprint():
             data = request.get_json()
             topic = data.get('topic', '')
             outline = data.get('outline', '')
+            prompt_examples = data.get('prompt_examples') or []
 
-            log_request('/content', {'topic': topic[:50] if topic else '', 'outline_length': len(outline)})
+            log_request('/content', {
+                'topic': topic[:50] if topic else '',
+                'outline_length': len(outline),
+                'prompt_examples_count': len(prompt_examples),
+            })
 
             # 验证必填参数
             if not topic:
@@ -60,7 +65,7 @@ def create_content_blueprint():
             # 调用内容生成服务
             logger.info(f"🔄 开始生成内容，主题: {topic[:50]}...")
             content_service = get_content_service()
-            result = content_service.generate_content(topic, outline)
+            result = content_service.generate_content(topic, outline, prompt_examples=prompt_examples)
 
             # 记录结果
             elapsed = time.time() - start_time
