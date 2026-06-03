@@ -37,6 +37,7 @@ from backend.services.xhs_quality_eval import (
 )
 from backend.services.xhs_quality_history import (
     summarize_loop_history,
+    write_improvement_plan_jsonl,
     write_loop_history_markdown,
 )
 from backend.services.xhs_quality_loop import run_quality_loop
@@ -1661,8 +1662,16 @@ def test_quality_loop_history_summarizes_replay_index_with_reports(tmp_path):
         "loop_history_002",
     ]
     assert summary["diagnostics"]["next_actions"][0]["issue_id"] == "baseline_overall_below_threshold"
+    assert summary["improvement_plan"]["schema_version"] == "xhs_quality_improvement_plan.v1"
+    assert summary["improvement_plan"]["task_count"] >= 2
+    assert summary["improvement_plan"]["tasks"][0]["source_issue_id"] == "baseline_overall_below_threshold"
+    assert summary["improvement_plan"]["tasks"][0]["stage"] == "prompt"
+    assert "EVAL_PROMPT_EXAMPLES" in summary["improvement_plan"]["tasks"][0]["config_targets"]
+    assert summary["improvement_plan"]["tasks"][1]["stage"] == "eval"
     assert "| loop_history_002 |" in markdown
     assert "## Diagnostics" in markdown
+    assert "## Improvement Plan" in markdown
+    assert "prompt_baseline_overall_below_threshold" in markdown
     assert "baseline_overall_below_threshold" in markdown
     assert "xhs_quality_loop_history.v1" in markdown
 
@@ -1691,6 +1700,35 @@ def test_quality_loop_history_diagnoses_missing_run_report(tmp_path):
     assert summary["diagnostics"]["issue_groups"][0]["issue_id"] == "missing_run_report"
     assert summary["diagnostics"]["issue_groups"][0]["severity"] == "high"
     assert summary["diagnostics"]["next_actions"][0]["action"].startswith("恢复或重跑")
+    assert summary["improvement_plan"]["tasks"][0]["stage"] == "monitoring"
+    assert summary["improvement_plan"]["tasks"][0]["source_issue_id"] == "missing_run_report"
+
+
+def test_quality_loop_improvement_plan_writes_jsonl(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    plan_path = tmp_path / "improvement-plan.jsonl"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_plan_001",
+        min_overall=95,
+    )
+
+    summary = summarize_loop_history(index_path)
+    write_improvement_plan_jsonl(summary["improvement_plan"], plan_path)
+
+    tasks = [
+        json.loads(line)
+        for line in plan_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(tasks) == summary["improvement_plan"]["task_count"]
+    assert tasks[0]["schema_version"] == "xhs_quality_improvement_task.v1"
+    assert tasks[0]["task_id"].startswith("prompt_baseline_overall_below_threshold")
+    assert tasks[0]["status"] == "proposed"
+    assert tasks[0]["affected_run_ids"] == ["loop_plan_001"]
 
 
 def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
@@ -1763,6 +1801,7 @@ def test_quality_loop_history_cli_writes_markdown(tmp_path):
     report_dir = tmp_path / "loop_reports"
     index_path = tmp_path / "loop-index.jsonl"
     markdown_path = tmp_path / "history.md"
+    plan_path = tmp_path / "improvement-plan.jsonl"
 
     run_quality_loop(
         cases_path="tests/fixtures/xhs_quality_cases.json",
@@ -1780,6 +1819,8 @@ def test_quality_loop_history_cli_writes_markdown(tmp_path):
             str(index_path),
             "--markdown",
             str(markdown_path),
+            "--improvement-plan-jsonl",
+            str(plan_path),
         ],
         check=True,
         capture_output=True,
@@ -1788,10 +1829,17 @@ def test_quality_loop_history_cli_writes_markdown(tmp_path):
 
     payload = json.loads(completed.stdout)
     markdown = markdown_path.read_text(encoding="utf-8")
+    tasks = [
+        json.loads(line)
+        for line in plan_path.read_text(encoding="utf-8").splitlines()
+    ]
     assert payload["summary"]["run_count"] == 1
     assert payload["summary"]["diagnostics"]["issue_groups"][0]["issue_id"] == "baseline_overall_below_threshold"
     assert payload["markdown"] == str(markdown_path)
+    assert payload["improvement_plan_jsonl"] == str(plan_path)
+    assert tasks[0]["stage"] == "prompt"
     assert "## Diagnostics" in markdown
+    assert "## Improvement Plan" in markdown
     assert "loop_history_cli_001" in markdown
 
 

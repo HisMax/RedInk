@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 SCHEMA_VERSION = "xhs_quality_loop_history.v1"
 DIAGNOSTICS_SCHEMA_VERSION = "xhs_quality_loop_diagnostics.v1"
+IMPROVEMENT_PLAN_SCHEMA_VERSION = "xhs_quality_improvement_plan.v1"
+IMPROVEMENT_TASK_SCHEMA_VERSION = "xhs_quality_improvement_task.v1"
 
 
 def load_loop_replay_index(path: str | Path) -> List[Dict[str, Any]]:
@@ -49,6 +51,7 @@ def summarize_loop_history(
         "runs": runs,
     }
     summary["diagnostics"] = diagnose_loop_history(summary)
+    summary["improvement_plan"] = build_loop_improvement_plan(summary["diagnostics"])
     return summary
 
 
@@ -69,11 +72,38 @@ def diagnose_loop_history(summary: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_loop_improvement_plan(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert diagnostic issues into concrete prompt/revision/eval tasks."""
+    tasks = []
+    for issue in diagnostics.get("issue_groups") or []:
+        tasks.extend(_tasks_for_issue(issue))
+    for index, task in enumerate(tasks, start=1):
+        task["order"] = index
+    return {
+        "schema_version": IMPROVEMENT_PLAN_SCHEMA_VERSION,
+        "source_schema_version": diagnostics.get("schema_version"),
+        "task_count": len(tasks),
+        "tasks": tasks,
+    }
+
+
 def write_loop_history_markdown(summary: Dict[str, Any], path: str | Path) -> None:
     """Write a Markdown history report."""
     report_path = Path(path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(_markdown(summary), encoding="utf-8")
+
+
+def write_improvement_plan_jsonl(plan: Dict[str, Any], path: str | Path) -> int:
+    """Write improvement plan tasks as JSONL."""
+    plan_path = Path(path)
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with plan_path.open("w", encoding="utf-8") as handle:
+        for task in plan.get("tasks") or []:
+            handle.write(json.dumps(task, ensure_ascii=False) + "\n")
+            count += 1
+    return count
 
 
 def _summarize_runs(
@@ -260,6 +290,117 @@ def _next_actions(issue_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+def _tasks_for_issue(issue: Dict[str, Any]) -> List[Dict[str, Any]]:
+    issue_id = issue.get("issue_id")
+    if issue_id == "missing_run_report":
+        return [_task(
+            issue,
+            stage="monitoring",
+            task_type="artifact_recovery",
+            title="恢复质量闭环运行报告",
+            action="恢复缺失的 run report，或使用 replay command 重跑对应 run 后重新生成 history。",
+            config_targets=["LOOP_REPLAY_INDEX", "LOOP_HISTORY_INDEX", "xhs-quality-loop-run.json"],
+            acceptance_check="make summarize-loop 不再出现 missing_run_report 诊断。",
+        )]
+    if issue_id in ("baseline_overall_below_threshold", "baseline_gate_failed"):
+        return [
+            _task(
+                issue,
+                stage="prompt",
+                task_type="generation_prompt_update",
+                title="强化首轮内容生成 prompt",
+                action="把 baseline 失败样本中的高频问题补进内容生成 prompt，重点约束标题钩子、正文结构、信息密度和收藏理由。",
+                config_targets=["EVAL_PROMPT_EXAMPLES", "LOOP_PROMPT_EXAMPLES", "xhs-quality-prompt-examples.jsonl"],
+                acceptance_check="下一轮 make xhs-quality-loop 的 baseline_failed_count 下降。",
+            ),
+            _task(
+                issue,
+                stage="eval",
+                task_type="quality_gate_review",
+                title="复核首轮质量门禁和评测集",
+                action="检查 LOOP_MIN_OVERALL/EVAL_MIN_OVERALL 是否符合当前 MVP 阶段，并补充能暴露标题、正文、标签问题的评测案例。",
+                config_targets=["LOOP_MIN_OVERALL", "EVAL_MIN_OVERALL", "tests/fixtures/xhs_quality_cases.json"],
+                acceptance_check="门禁阈值、评测案例和目标内容质量之间有明确记录，且趋势报告可比较。",
+            ),
+        ]
+    if issue_id == "baseline_decision_not_allowed":
+        return [_task(
+            issue,
+            stage="eval",
+            task_type="decision_gate_review",
+            title="复核质量决策门禁",
+            action="检查 allowed decisions 和 QualityService 返回决策，确认 reject/revise 的具体触发原因。",
+            config_targets=["DEFAULT_ALLOWED_DECISIONS", "EVAL_REPORT_ONLY", "LOOP_MIN_OVERALL"],
+            acceptance_check="下一轮诊断能区分分数不足和决策不允许两类失败。",
+        )]
+    if issue_id == "re_evaluation_not_improved":
+        return [_task(
+            issue,
+            stage="revision",
+            task_type="revision_prompt_update",
+            title="收紧二次改稿 prompt",
+            action="要求 revision 明确引用 baseline 失败原因，并输出逐项修复摘要，避免只做表层润色。",
+            config_targets=["REVISION_LIVE", "LOOP_LIVE_REVISION", "LOOP_MIN_IMPROVEMENT"],
+            acceptance_check="下一轮 re_evaluation_failure_count 下降，re_evaluation_improved_count 上升。",
+        )]
+    if issue_id == "quality_examples_missing":
+        return [_task(
+            issue,
+            stage="prompt",
+            task_type="prompt_example_supply",
+            title="补齐可复用优质样本",
+            action="降低样本导出门槛或补充人工 review 后的优质样本，保证下一轮生成能引用稳定示例。",
+            config_targets=["LOOP_MIN_QUALITY_OVERALL", "LOOP_MIN_SCORE_DELTA", "CASE_QUALITY_EXAMPLES"],
+            acceptance_check="xhs-quality-prompt-examples.jsonl 至少导出 1 条样本。",
+        )]
+    if issue_id == "quality_examples_declined":
+        return [_task(
+            issue,
+            stage="eval",
+            task_type="quality_example_regression_check",
+            title="排查优质样本产出下滑",
+            action="对比下滑 run 和前一轮 run report，确认是门禁变严、输入案例变化，还是生成质量下降。",
+            config_targets=["LOOP_MIN_QUALITY_OVERALL", "LOOP_MIN_SCORE_DELTA", "LOOP_HISTORY_LIMIT"],
+            acceptance_check="重放后能解释 quality_examples_delta 为负的原因，并记录修复动作。",
+        )]
+    return [_task(
+        issue,
+        stage="eval",
+        task_type="diagnostic_review",
+        title=f"复盘诊断问题 {issue_id}",
+        action=issue.get("action") or "复盘诊断问题并记录改进动作。",
+        config_targets=["LOOP_HISTORY_MARKDOWN"],
+        acceptance_check="问题有明确 owner、配置目标和下一轮验证指标。",
+    )]
+
+
+def _task(
+    issue: Dict[str, Any],
+    *,
+    stage: str,
+    task_type: str,
+    title: str,
+    action: str,
+    config_targets: List[str],
+    acceptance_check: str,
+) -> Dict[str, Any]:
+    return {
+        "schema_version": IMPROVEMENT_TASK_SCHEMA_VERSION,
+        "task_id": f"{stage}_{issue.get('issue_id')}",
+        "source_issue_id": issue.get("issue_id"),
+        "source_priority": issue.get("priority"),
+        "severity": issue.get("severity"),
+        "stage": stage,
+        "task_type": task_type,
+        "title": title,
+        "action": action,
+        "config_targets": config_targets,
+        "affected_run_ids": issue.get("affected_run_ids") or [],
+        "acceptance_check": acceptance_check,
+        "status": "proposed",
+    }
+
+
 def _baseline_failure_reasons(report: Optional[Dict[str, Any]]) -> Dict[str, int]:
     if not report:
         return {}
@@ -354,6 +495,28 @@ def _markdown(summary: Dict[str, Any]) -> str:
                 count=_display_number(issue.get("count")),
                 runs=", ".join(issue.get("affected_run_ids") or []),
                 recommendation=issue.get("recommendation") or "",
+            )
+        )
+    improvement_plan = summary.get("improvement_plan") or {}
+    lines.extend([
+        "",
+        "## Improvement Plan",
+        "",
+        f"- Schema: `{improvement_plan.get('schema_version') or ''}`",
+        f"- Tasks: {improvement_plan.get('task_count', 0)}",
+        "",
+        "| Order | Stage | Task | Source Issue | Config Targets | Acceptance Check |",
+        "| ---: | --- | --- | --- | --- | --- |",
+    ])
+    for task in improvement_plan.get("tasks") or []:
+        lines.append(
+            "| {order} | {stage} | {task_id} | {issue_id} | {targets} | {check} |".format(
+                order=task.get("order"),
+                stage=task.get("stage") or "",
+                task_id=task.get("task_id") or "",
+                issue_id=task.get("source_issue_id") or "",
+                targets=", ".join(task.get("config_targets") or []),
+                check=task.get("acceptance_check") or "",
             )
         )
     lines.append("")

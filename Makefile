@@ -52,6 +52,7 @@ LOOP_LIVE_REVISION ?= 0
 LOOP_LIVE_REEVAL ?= 0
 LOOP_HISTORY_INDEX ?= $(LOOP_REPLAY_INDEX)
 LOOP_HISTORY_MARKDOWN ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-history.md
+LOOP_IMPROVEMENT_PLAN ?= $(LOOP_REPORT_DIR)/xhs-quality-improvement-plan.jsonl
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
@@ -144,6 +145,7 @@ LOOP_ARGS += --live-re-evaluation
 endif
 
 LOOP_HISTORY_ARGS := --replay-index "$(LOOP_HISTORY_INDEX)" --markdown "$(LOOP_HISTORY_MARKDOWN)"
+LOOP_HISTORY_ARGS += --improvement-plan-jsonl "$(LOOP_IMPROVEMENT_PLAN)"
 
 ifneq ($(strip $(LOOP_HISTORY_LIMIT)),)
 LOOP_HISTORY_ARGS += --limit "$(LOOP_HISTORY_LIMIT)"

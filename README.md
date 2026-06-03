@@ -261,6 +261,7 @@ make summarize-loop
 ```
 
 The history report includes prioritized diagnostics for baseline failures, missing run reports, re-evaluation regressions, and quality example output.
+It also exports `xhs-quality-improvement-plan.jsonl`, a proposed task list for prompt, revision, and eval configuration changes.
 
 Enable live services step by step when your provider config is ready:
 
