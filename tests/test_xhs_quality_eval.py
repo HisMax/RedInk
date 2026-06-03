@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from backend.services.content import ContentService
 from backend.services.content_case_library import (
@@ -1806,6 +1807,78 @@ def test_quality_loop_history_diagnoses_missing_run_report(tmp_path):
     assert summary["improvement_plan"]["tasks"][0]["source_issue_id"] == "missing_run_report"
 
 
+def test_quality_loop_history_summarizes_ab_eval_set_versions(tmp_path):
+    loop_index_path = tmp_path / "loop-index.jsonl"
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    ab_report_path = tmp_path / "runs" / "ab_001" / "xhs-quality-ab-run.json"
+    ab_report_path.parent.mkdir(parents=True)
+    ab_report_path.write_text(
+        json.dumps({
+            "schema_version": "xhs_quality_ab_comparison.v1",
+            "run_id": "ab_001",
+            "created_at": "2026-06-04T11:00:00Z",
+            "base": {
+                "case_set": {"format": "legacy", "version_id": None},
+                "case_count": 1,
+                "baseline": {"passed": True, "failed_count": 0},
+                "comparison": {"passed": True, "failed_count": 0},
+            },
+            "candidate": {
+                "case_set": {"format": "versioned", "version_id": "xhs_quality_cases_v2"},
+                "case_count": 2,
+                "baseline": {"passed": True, "failed_count": 0},
+                "comparison": {"passed": False, "failed_count": 1},
+            },
+            "summary": {
+                "base_case_count": 1,
+                "candidate_case_count": 2,
+                "shared_case_count": 1,
+                "added_case_count": 1,
+                "added_case_baseline_passed_count": 1,
+                "added_case_baseline_failed_count": 0,
+                "regression_failed_count": 1,
+                "comparison_passed": False,
+            },
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    ab_index_path.write_text(
+        json.dumps({
+            "schema_version": "xhs_quality_ab_index.v1",
+            "run_id": "ab_001",
+            "created_at": "2026-06-04T11:00:00Z",
+            "run_report": str(ab_report_path),
+            "candidate_version_id": "xhs_quality_cases_v2",
+            "candidate_case_count": 2,
+            "added_case_count": 1,
+            "regression_failed_count": 1,
+            "comparison_passed": False,
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = summarize_loop_history(loop_index_path, ab_index_path=ab_index_path)
+    markdown_path = tmp_path / "history.md"
+    write_loop_history_markdown(summary, markdown_path)
+
+    dashboard = summary["eval_set_versions"]
+    version = dashboard["versions"][0]
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert summary["ab_run_count"] == 1
+    assert dashboard["schema_version"] == "xhs_eval_set_version_dashboard.v1"
+    assert dashboard["version_count"] == 1
+    assert version["version_id"] == "xhs_quality_cases_v2"
+    assert version["ab_run_count"] == 1
+    assert version["latest_run_id"] == "ab_001"
+    assert version["candidate_case_count"] == 2
+    assert version["added_case_count"] == 1
+    assert version["added_case_baseline_passed_count"] == 1
+    assert version["regression_failed_count"] == 1
+    assert version["risk_level"] == "high"
+    assert "## Eval Set Versions" in markdown
+    assert "xhs_quality_cases_v2" in markdown
+
+
 def test_quality_loop_improvement_plan_writes_jsonl(tmp_path):
     report_dir = tmp_path / "loop_reports"
     index_path = tmp_path / "loop-index.jsonl"
@@ -2306,12 +2379,26 @@ def test_quality_ab_cli_compares_base_and_versioned_candidate(tmp_path):
     )
 
     payload = json.loads(completed.stdout)
+    ab_index_path = report_dir / "xhs-quality-ab-index.jsonl"
+    ab_index_rows = [
+        json.loads(line)
+        for line in ab_index_path.read_text(encoding="utf-8").splitlines()
+    ]
+    ab_report = json.loads(Path(payload["paths"]["run_report"]).read_text(encoding="utf-8"))
     assert payload["schema_version"] == "xhs_quality_ab_comparison.v1"
     assert payload["base"]["case_set"]["format"] == "legacy"
     assert payload["candidate"]["case_set"]["version_id"] == "xhs_quality_cases_ab_v2"
     assert payload["summary"]["shared_case_count"] == 1
     assert payload["summary"]["added_case_count"] == 1
+    assert payload["summary"]["added_case_baseline_passed_count"] == 1
+    assert payload["summary"]["regression_failed_count"] == 0
     assert payload["candidate"]["comparison"]["skipped_count"] == 1
+    assert payload["paths"]["ab_index"] == str(ab_index_path)
+    assert payload["paths"]["run_report"].endswith("xhs-quality-ab-run.json")
+    assert ab_report["run_id"] == "ab_cli_001"
+    assert ab_index_rows[-1]["run_id"] == "ab_cli_001"
+    assert ab_index_rows[-1]["run_report"] == payload["paths"]["run_report"]
+    assert ab_index_rows[-1]["candidate_version_id"] == "xhs_quality_cases_ab_v2"
     assert (report_dir / "base" / "xhs-quality-eval.jsonl").exists()
     assert (report_dir / "candidate" / "xhs-quality-eval.jsonl").exists()
 
@@ -2689,3 +2776,4 @@ def test_make_eval_quality_ab_compares_case_sets(tmp_path):
     assert payload["summary"]["shared_case_count"] == 1
     assert payload["summary"]["added_case_count"] == 1
     assert (report_dir / "xhs-quality-ab" / "candidate" / "xhs-quality-eval.md").exists()
+    assert (report_dir / "xhs-quality-ab" / "xhs-quality-ab-index.jsonl").exists()

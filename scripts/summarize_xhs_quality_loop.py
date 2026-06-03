@@ -20,6 +20,7 @@ from backend.services.xhs_quality_history import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarize a Xiaohongshu quality loop replay index.")
     parser.add_argument("--replay-index", required=True, help="Path to xhs quality loop replay index JSONL.")
+    parser.add_argument("--ab-index", help="Optional xhs quality A/B replay index JSONL.")
     parser.add_argument("--markdown", help="Optional Markdown history output path.")
     parser.add_argument("--improvement-plan-jsonl", help="Optional JSONL output path for improvement tasks.")
     parser.add_argument("--limit", type=int, help="Only summarize the latest N runs.")
@@ -31,6 +32,7 @@ def main() -> int:
     args = parse_args()
     summary = summarize_loop_history(
         args.replay_index,
+        ab_index_path=args.ab_index,
         limit=args.limit,
         include_reports=not args.no_reports,
     )
@@ -41,6 +43,7 @@ def main() -> int:
 
     payload = {
         "replay_index": args.replay_index,
+        "ab_index": args.ab_index,
         "markdown": args.markdown,
         "improvement_plan_jsonl": args.improvement_plan_jsonl,
         "summary": summary,

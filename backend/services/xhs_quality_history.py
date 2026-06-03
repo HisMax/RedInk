@@ -14,6 +14,7 @@ SCHEMA_VERSION = "xhs_quality_loop_history.v1"
 DIAGNOSTICS_SCHEMA_VERSION = "xhs_quality_loop_diagnostics.v1"
 IMPROVEMENT_PLAN_SCHEMA_VERSION = "xhs_quality_improvement_plan.v1"
 IMPROVEMENT_TASK_SCHEMA_VERSION = "xhs_quality_improvement_task.v1"
+EVAL_SET_DASHBOARD_SCHEMA_VERSION = "xhs_eval_set_version_dashboard.v1"
 
 
 def load_loop_replay_index(path: str | Path) -> List[Dict[str, Any]]:
@@ -32,6 +33,7 @@ def load_loop_replay_index(path: str | Path) -> List[Dict[str, Any]]:
 def summarize_loop_history(
     index_path: str | Path,
     *,
+    ab_index_path: Optional[str | Path] = None,
     limit: Optional[int] = None,
     include_reports: bool = True,
 ) -> Dict[str, Any]:
@@ -39,16 +41,24 @@ def summarize_loop_history(
     rows = load_loop_replay_index(index_path)
     if limit is not None:
         rows = rows[-limit:]
+    ab_rows = load_loop_replay_index(ab_index_path) if ab_index_path else []
+    if limit is not None:
+        ab_rows = ab_rows[-limit:]
 
     runs = _summarize_runs(rows, include_reports=include_reports)
+    ab_runs = _summarize_ab_runs(ab_rows, include_reports=include_reports)
     latest = runs[-1] if runs else {}
     summary = {
         "schema_version": SCHEMA_VERSION,
         "index_path": str(index_path),
+        "ab_index_path": str(ab_index_path) if ab_index_path else None,
         "run_count": len(runs),
+        "ab_run_count": len(ab_runs),
         "latest_run_id": latest.get("run_id"),
         "totals": _totals(runs),
         "runs": runs,
+        "ab_runs": ab_runs,
+        "eval_set_versions": _eval_set_version_dashboard(ab_runs, ab_index_path),
     }
     summary["diagnostics"] = diagnose_loop_history(summary)
     summary["improvement_plan"] = build_loop_improvement_plan(summary["diagnostics"])
@@ -145,6 +155,116 @@ def _summarize_runs(
         runs.append(run)
 
     return runs
+
+
+def _summarize_ab_runs(
+    rows: Iterable[Dict[str, Any]],
+    *,
+    include_reports: bool,
+) -> List[Dict[str, Any]]:
+    runs = []
+    for row in rows:
+        report = _load_run_report(row.get("run_report")) if include_reports else None
+        summary = (report or {}).get("summary") or {}
+        candidate = (report or {}).get("candidate") or {}
+        candidate_case_set = candidate.get("case_set") or {}
+        candidate_baseline = candidate.get("baseline") or {}
+        comparison = candidate.get("comparison") or {}
+        candidate_version_id = (
+            candidate_case_set.get("version_id")
+            or row.get("candidate_version_id")
+            or "unversioned_candidate"
+        )
+        runs.append({
+            "run_id": row.get("run_id") or (report or {}).get("run_id"),
+            "created_at": row.get("created_at") or (report or {}).get("created_at"),
+            "run_report": row.get("run_report"),
+            "report_exists": report is not None,
+            "candidate_version_id": candidate_version_id,
+            "candidate_format": candidate_case_set.get("format"),
+            "candidate_case_count": _summary_int(row, summary, "candidate_case_count"),
+            "shared_case_count": _summary_int(row, summary, "shared_case_count"),
+            "added_case_count": _summary_int(row, summary, "added_case_count"),
+            "added_case_baseline_passed_count": _summary_int(row, summary, "added_case_baseline_passed_count"),
+            "added_case_baseline_failed_count": _summary_int(row, summary, "added_case_baseline_failed_count"),
+            "regression_failed_count": _summary_int(row, summary, "regression_failed_count"),
+            "candidate_baseline_failed_count": _int(candidate_baseline.get("failed_count")),
+            "candidate_baseline_passed": _optional_bool(candidate_baseline.get("passed")),
+            "comparison_passed": _optional_bool(row.get("comparison_passed", summary.get("comparison_passed"))),
+            "comparison_failed_count": _int(comparison.get("failed_count")),
+        })
+    return runs
+
+
+def _eval_set_version_dashboard(
+    ab_runs: Iterable[Dict[str, Any]],
+    ab_index_path: Optional[str | Path],
+) -> Dict[str, Any]:
+    versions = []
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for run in ab_runs:
+        grouped.setdefault(run.get("candidate_version_id") or "unversioned_candidate", []).append(run)
+
+    for version_id, runs in sorted(grouped.items()):
+        latest = runs[-1]
+        regression_failed_count = sum(_int(run.get("regression_failed_count")) for run in runs)
+        added_failed_count = sum(_int(run.get("added_case_baseline_failed_count")) for run in runs)
+        comparison_failed_count = sum(1 for run in runs if run.get("comparison_passed") is False)
+        risk_level, risk_reasons = _eval_set_risk(
+            regression_failed_count=regression_failed_count,
+            added_failed_count=added_failed_count,
+            comparison_failed_count=comparison_failed_count,
+        )
+        versions.append({
+            "version_id": version_id,
+            "candidate_format": latest.get("candidate_format"),
+            "ab_run_count": len(runs),
+            "latest_run_id": latest.get("run_id"),
+            "latest_created_at": latest.get("created_at"),
+            "candidate_case_count": _int(latest.get("candidate_case_count")),
+            "shared_case_count": _int(latest.get("shared_case_count")),
+            "added_case_count": _int(latest.get("added_case_count")),
+            "added_case_baseline_passed_count": sum(
+                _int(run.get("added_case_baseline_passed_count")) for run in runs
+            ),
+            "added_case_baseline_failed_count": added_failed_count,
+            "regression_failed_count": regression_failed_count,
+            "comparison_passed_count": sum(1 for run in runs if run.get("comparison_passed") is True),
+            "comparison_failed_count": comparison_failed_count,
+            "ab_run_ids": [run.get("run_id") for run in runs if run.get("run_id")],
+            "risk_level": risk_level,
+            "risk_reasons": risk_reasons,
+        })
+    return {
+        "schema_version": EVAL_SET_DASHBOARD_SCHEMA_VERSION,
+        "ab_index_path": str(ab_index_path) if ab_index_path else None,
+        "version_count": len(versions),
+        "versions": versions,
+    }
+
+
+def _eval_set_risk(
+    *,
+    regression_failed_count: int,
+    added_failed_count: int,
+    comparison_failed_count: int,
+) -> tuple[str, List[str]]:
+    reasons = []
+    if regression_failed_count:
+        reasons.append(f"{regression_failed_count} shared cases regressed beyond threshold")
+    if added_failed_count:
+        reasons.append(f"{added_failed_count} added cases failed baseline")
+    if comparison_failed_count:
+        reasons.append(f"{comparison_failed_count} A/B runs failed comparison gate")
+    if regression_failed_count:
+        return "high", reasons
+    if added_failed_count or comparison_failed_count:
+        return "medium", reasons
+    return "low", reasons
+
+
+def _summary_int(row: Dict[str, Any], summary: Dict[str, Any], key: str) -> int:
+    return _int(summary.get(key) if summary.get(key) is not None else row.get(key))
 
 
 def _merge_metrics(row: Dict[str, Any], report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -476,6 +596,33 @@ def _markdown(summary: Dict[str, Any]) -> str:
             )
         )
     diagnostics = summary.get("diagnostics") or {}
+    dashboard = summary.get("eval_set_versions") or {}
+    lines.extend([
+        "",
+        "## Eval Set Versions",
+        "",
+        f"- Schema: `{dashboard.get('schema_version') or ''}`",
+        f"- A/B index: `{dashboard.get('ab_index_path') or ''}`",
+        f"- Versions: {dashboard.get('version_count', 0)}",
+        "",
+        "| Version | Runs | Latest Run | Cases | Added | Added Pass | Added Fail | Regressions | Comparison Fail | Risk |",
+        "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ])
+    for version in dashboard.get("versions") or []:
+        lines.append(
+            "| {version_id} | {runs} | {latest} | {cases} | {added} | {added_pass} | {added_fail} | {regressions} | {comparison_fail} | {risk} |".format(
+                version_id=version.get("version_id") or "",
+                runs=_display_number(version.get("ab_run_count")),
+                latest=version.get("latest_run_id") or "",
+                cases=_display_number(version.get("candidate_case_count")),
+                added=_display_number(version.get("added_case_count")),
+                added_pass=_display_number(version.get("added_case_baseline_passed_count")),
+                added_fail=_display_number(version.get("added_case_baseline_failed_count")),
+                regressions=_display_number(version.get("regression_failed_count")),
+                comparison_fail=_display_number(version.get("comparison_failed_count")),
+                risk=version.get("risk_level") or "",
+            )
+        )
     lines.extend([
         "",
         "## Diagnostics",
@@ -542,6 +689,10 @@ def _int(value: Any) -> int:
 
 def _optional_int(value: Any) -> Optional[int]:
     return value if isinstance(value, int) else None
+
+
+def _optional_bool(value: Any) -> Optional[bool]:
+    return value if isinstance(value, bool) else None
 
 
 def _display_number(value: Any) -> str:

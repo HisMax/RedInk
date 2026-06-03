@@ -308,6 +308,15 @@ Compare the base fixture with a promoted candidate set:
 make eval-quality-ab AB_CANDIDATE_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
 ```
 
+Each A/B run writes replayable artifacts:
+
+```text
+reports/xhs-quality-ab/runs/<run>/xhs-quality-ab-run.json
+reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
+```
+
+`make summarize-loop` reads the A/B index and adds an eval set version dashboard with added-case performance and regression risk.
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

@@ -320,6 +320,15 @@ make xhs-quality-loop LOOP_CASES=reports/xhs-quality-loop/xhs-quality-cases.next
 make eval-quality-ab AB_CANDIDATE_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
 ```
 
+每次 A/B 都会写入可回放产物：
+
+```text
+reports/xhs-quality-ab/runs/<run>/xhs-quality-ab-run.json
+reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
+```
+
+`make summarize-loop` 会读取 A/B index，并在历史报告中加入 eval set 版本看板，展示增量 case 表现和回退风险。
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash
