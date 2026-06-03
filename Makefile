@@ -59,6 +59,9 @@ LOOP_EVAL_CASE_DRAFTS ?= $(LOOP_IMPROVEMENT_DRAFT_DIR)/xhs-eval-case-drafts.json
 LOOP_EVAL_CASE_CANDIDATES ?= $(LOOP_REPORT_DIR)/xhs-eval-case-candidates.jsonl
 LOOP_APPLY_RUN_ID ?= xhs_apply_improvements
 LOOP_APPLY_APPROVED ?= 0
+LOOP_PROMOTED_CASES ?= $(LOOP_REPORT_DIR)/xhs-quality-cases.next.json
+LOOP_PROMOTED_VERSION_ID ?= xhs_quality_cases_next
+LOOP_PROMOTE_APPROVED ?= 0
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
@@ -169,7 +172,16 @@ else
 APPLY_IMPROVEMENT_ARGS += --dry-run
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements test-quality
+PROMOTE_EVAL_CASE_ARGS := --candidates-jsonl "$(LOOP_EVAL_CASE_CANDIDATES)" --base-cases "tests/fixtures/xhs_quality_cases.json"
+PROMOTE_EVAL_CASE_ARGS += --output "$(LOOP_PROMOTED_CASES)" --version-id "$(LOOP_PROMOTED_VERSION_ID)"
+
+ifeq ($(LOOP_PROMOTE_APPROVED),1)
+PROMOTE_EVAL_CASE_ARGS += --promote-approved
+else
+PROMOTE_EVAL_CASE_ARGS += --dry-run
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -202,6 +214,10 @@ draft-improvements:
 apply-improvements:
 	@mkdir -p "$(dir $(LOOP_EVAL_CASE_CANDIDATES))"
 	@$(PYTHON) scripts/apply_xhs_improvements.py $(APPLY_IMPROVEMENT_ARGS)
+
+promote-eval-cases:
+	@mkdir -p "$(dir $(LOOP_PROMOTED_CASES))"
+	@$(PYTHON) scripts/promote_xhs_eval_cases.py $(PROMOTE_EVAL_CASE_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

@@ -283,6 +283,18 @@ Append only `status=approved` eval case drafts to `xhs-eval-case-candidates.json
 make apply-improvements LOOP_APPLY_APPROVED=1
 ```
 
+Dry-run promotion of candidates marked `status=approved` into a new eval set version:
+
+```bash
+make promote-eval-cases
+```
+
+Write the new version file without overwriting the base fixture:
+
+```bash
+make promote-eval-cases LOOP_PROMOTE_APPROVED=1
+```
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

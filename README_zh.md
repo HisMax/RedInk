@@ -295,6 +295,18 @@ make apply-improvements
 make apply-improvements LOOP_APPLY_APPROVED=1
 ```
 
+先用 dry-run 检查 `status=approved` 的候选会如何晋级到新的评测集版本：
+
+```bash
+make promote-eval-cases
+```
+
+写入新的版本文件，不覆盖基础 fixture：
+
+```bash
+make promote-eval-cases LOOP_PROMOTE_APPROVED=1
+```
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash

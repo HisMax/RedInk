@@ -49,6 +49,10 @@ from backend.services.xhs_improvement_apply import (
     apply_approved_eval_case_drafts,
     load_eval_case_drafts,
 )
+from backend.services.xhs_eval_case_promotion import (
+    load_eval_case_candidates,
+    promote_approved_eval_case_candidates,
+)
 from backend.services.xhs_quality_loop import run_quality_loop
 from backend.services.xhs_re_evaluation import (
     apply_improvement_gate,
@@ -2057,6 +2061,123 @@ def test_apply_approved_eval_case_drafts_cli_dry_run_and_apply(tmp_path):
     assert candidates_path.exists() is True
     assert apply_payload["appended_count"] == 1
     assert candidate_rows[0]["source_task_id"] == "eval_baseline_overall_below_threshold"
+
+
+def test_promote_approved_eval_case_candidates_writes_version_file(tmp_path):
+    candidates_path = tmp_path / "xhs-eval-case-candidates.jsonl"
+    output_path = tmp_path / "xhs-quality-cases.v2.json"
+    candidate = {
+        "schema_version": "xhs_eval_case_candidate.v1",
+        "candidate_id": "apply_001:eval_case_001",
+        "source_draft_id": "eval_case_001",
+        "source_task_id": "eval_task_001",
+        "source_issue_id": "baseline_overall_below_threshold",
+        "status": "approved",
+        "category": "quality_regression",
+        "topic": "标题钩子和信息密度验证",
+        "outline": {"goal": "验证标题和正文是否更具体"},
+        "expected_traits": ["标题钩子", "可执行细节"],
+    }
+    rejected = dict(candidate, candidate_id="apply_001:eval_case_002", status="candidate")
+    candidates_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in [candidate, rejected]) + "\n",
+        encoding="utf-8",
+    )
+
+    candidates = load_eval_case_candidates(candidates_path)
+    dry_payload = promote_approved_eval_case_candidates(
+        candidates,
+        base_cases_path="tests/fixtures/xhs_quality_cases.json",
+        output_path=output_path,
+        version_id="xhs_quality_cases_v2",
+        dry_run=True,
+    )
+    assert output_path.exists() is False
+    applied_payload = promote_approved_eval_case_candidates(
+        candidates,
+        base_cases_path="tests/fixtures/xhs_quality_cases.json",
+        output_path=output_path,
+        version_id="xhs_quality_cases_v2",
+        promote_approved=True,
+    )
+
+    version = json.loads(output_path.read_text(encoding="utf-8"))
+    assert dry_payload["dry_run"] is True
+    assert dry_payload["approved_count"] == 1
+    assert dry_payload["would_write_count"] == 6
+    assert output_path.exists() is True
+    assert applied_payload["dry_run"] is False
+    assert applied_payload["written_count"] == 6
+    assert version["schema_version"] == "xhs_quality_cases_version.v1"
+    assert version["version_id"] == "xhs_quality_cases_v2"
+    assert len(version["cases"]) == 6
+    assert version["cases"][-1]["id"] == "apply_001_eval_case_001"
+    assert version["cases"][-1]["source_candidate_id"] == candidate["candidate_id"]
+
+
+def test_promote_approved_eval_case_candidates_cli_dry_run_and_promote(tmp_path):
+    candidates_path = tmp_path / "xhs-eval-case-candidates.jsonl"
+    output_path = tmp_path / "xhs-quality-cases.v2.json"
+    candidates_path.write_text(
+        json.dumps({
+            "schema_version": "xhs_eval_case_candidate.v1",
+            "candidate_id": "apply_cli_001:eval_case_001",
+            "source_draft_id": "eval_case_001",
+            "source_task_id": "eval_task_001",
+            "source_issue_id": "baseline_overall_below_threshold",
+            "status": "approved",
+            "category": "quality_regression",
+            "topic": "标题钩子和信息密度验证",
+            "outline": {"goal": "验证标题和正文是否更具体"},
+            "expected_traits": ["标题钩子", "可执行细节"],
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    dry_run = subprocess.run(
+        [
+            sys.executable,
+            "scripts/promote_xhs_eval_cases.py",
+            "--candidates-jsonl",
+            str(candidates_path),
+            "--base-cases",
+            "tests/fixtures/xhs_quality_cases.json",
+            "--output",
+            str(output_path),
+            "--version-id",
+            "xhs_quality_cases_cli_v2",
+            "--dry-run",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    promote_run = subprocess.run(
+        [
+            sys.executable,
+            "scripts/promote_xhs_eval_cases.py",
+            "--candidates-jsonl",
+            str(candidates_path),
+            "--base-cases",
+            "tests/fixtures/xhs_quality_cases.json",
+            "--output",
+            str(output_path),
+            "--version-id",
+            "xhs_quality_cases_cli_v2",
+            "--promote-approved",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    dry_payload = json.loads(dry_run.stdout)
+    promote_payload = json.loads(promote_run.stdout)
+    version = json.loads(output_path.read_text(encoding="utf-8"))
+    assert dry_payload["dry_run"] is True
+    assert dry_payload["would_write_count"] == 6
+    assert promote_payload["written_count"] == 6
+    assert version["metadata"]["promoted_count"] == 1
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):
