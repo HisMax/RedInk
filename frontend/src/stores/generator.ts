@@ -14,7 +14,7 @@
  * 4. result: 查看生成结果
  */
 import { defineStore } from 'pinia'
-import type { Page } from '../api'
+import type { Page, PublishGate, QualityScore, RevisionResult } from '../api'
 
 /**
  * 生成的图片信息
@@ -73,6 +73,24 @@ export interface GeneratorState {
   // 生成的内容数据（标题、文案、标签）
   content: GeneratedContent
 
+  // 当前内容生成与质量评估链路的追踪ID
+  traceId: string | null
+
+  // 内容质量评分结果
+  quality: QualityScore | null
+
+  // 发布前检查闸门
+  publishGate: PublishGate | null
+
+  // 质量评分状态
+  qualityStatus: 'idle' | 'evaluating' | 'done' | 'error'
+
+  // 质量评分错误信息
+  qualityError?: string
+
+  // 改写历史
+  revisionHistory: RevisionResult[]
+
   // 大纲生成状态：idle-未开始, generating-生成中, done-已完成, error-出错
   outlineStatus: 'idle' | 'generating' | 'done' | 'error'
 
@@ -108,6 +126,12 @@ function saveState(state: GeneratorState) {
       taskId: state.taskId,                  // 任务ID
       recordId: state.recordId,              // 历史记录ID
       content: state.content,                // 生成的内容（标题、文案、标签）
+      traceId: state.traceId,                // 内容生成与评分追踪ID
+      quality: state.quality,                // 内容质量评分
+      publishGate: state.publishGate,        // 发布前检查闸门
+      qualityStatus: state.qualityStatus,    // 质量评分状态
+      qualityError: state.qualityError,      // 质量评分错误
+      revisionHistory: state.revisionHistory, // 改写历史
       outlineStatus: state.outlineStatus,    // 大纲生成状态
       lastSavedAt: state.lastSavedAt         // 最后保存时间
     }
@@ -159,6 +183,24 @@ export const useGeneratorStore = defineStore('generator', {
         tags: [],
         status: 'idle'
       },
+
+      // 内容生成与质量评估链路的追踪ID
+      traceId: saved.traceId || null,
+
+      // 内容质量评分结果
+      quality: saved.quality || null,
+
+      // 发布前检查闸门
+      publishGate: saved.publishGate || null,
+
+      // 质量评分状态
+      qualityStatus: saved.qualityStatus || 'idle',
+
+      // 质量评分错误信息
+      qualityError: saved.qualityError,
+
+      // 改写历史
+      revisionHistory: saved.revisionHistory || [],
 
       // 大纲生成状态
       outlineStatus: saved.outlineStatus || 'idle',
@@ -429,6 +471,14 @@ export const useGeneratorStore = defineStore('generator', {
         status: 'idle'       // 状态设为空闲
       }
 
+      // 清空内容质量闭环状态
+      this.traceId = null
+      this.quality = null
+      this.publishGate = null
+      this.qualityStatus = 'idle'
+      this.qualityError = undefined
+      this.revisionHistory = []
+
       // 重置大纲生成状态
       this.outlineStatus = 'idle'
 
@@ -469,6 +519,60 @@ export const useGeneratorStore = defineStore('generator', {
     setContentError(error: string) {
       this.content.status = 'error'
       this.content.error = error
+    },
+
+    /**
+     * 设置当前内容生成和评分链路的追踪ID
+     * @param traceId 追踪ID，null表示清空
+     */
+    setTraceId(traceId: string | null) {
+      this.traceId = traceId
+    },
+
+    /**
+     * 开始质量评分
+     */
+    startQualityEvaluation() {
+      this.qualityStatus = 'evaluating'
+      this.qualityError = undefined
+    },
+
+    /**
+     * 设置质量评分结果
+     * @param quality 质量评分
+     * @param publishGate 发布前检查闸门
+     * @param traceId 可选追踪ID
+     */
+    setQualityResult(quality: QualityScore, publishGate: PublishGate, traceId?: string | null) {
+      this.quality = quality
+      this.publishGate = publishGate
+      if (traceId) this.traceId = traceId
+      this.qualityStatus = 'done'
+      this.qualityError = undefined
+    },
+
+    /**
+     * 设置质量评分错误
+     * @param error 错误信息
+     */
+    setQualityError(error: string) {
+      this.qualityStatus = 'error'
+      this.qualityError = error
+    },
+
+    /**
+     * 应用改写结果，并清空旧评分等待重新评估
+     * @param revision 改写结果
+     */
+    applyRevision(revision: RevisionResult) {
+      this.content.titles = revision.titles
+      this.content.copywriting = revision.copywriting
+      this.content.tags = revision.tags
+      this.content.status = 'done'
+      this.revisionHistory.push(revision)
+      this.qualityStatus = 'idle'
+      this.quality = null
+      this.publishGate = null
     },
 
     /**
@@ -571,6 +675,12 @@ export function setupAutoSave() {
       taskId: store.taskId,                  // 任务ID
       recordId: store.recordId,              // 历史记录ID
       content: store.content,                // 生成的内容
+      traceId: store.traceId,                // 内容生成与评分追踪ID
+      quality: store.quality,                // 内容质量评分
+      publishGate: store.publishGate,        // 发布前检查闸门
+      qualityStatus: store.qualityStatus,    // 质量评分状态
+      qualityError: store.qualityError,      // 质量评分错误
+      revisionHistory: store.revisionHistory, // 改写历史
       outlineStatus: store.outlineStatus,    // 大纲生成状态
       lastSavedAt: store.lastSavedAt         // 最后保存时间
     }),

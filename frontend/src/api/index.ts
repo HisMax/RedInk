@@ -215,6 +215,16 @@ export interface CreateHistoryParams {
   topic: string
   outline: { raw: string; pages: Page[] }
   task_id?: string
+  trace_id?: string | null
+  content?: {
+    titles: string[]
+    copywriting: string
+    tags: string[]
+  }
+  quality?: {
+    quality_score: QualityScore
+    publish_gate: PublishGate
+  }
 }
 
 /**
@@ -225,6 +235,17 @@ export interface UpdateHistoryParams {
   images?: { task_id: string | null; generated: string[] }
   status?: string
   thumbnail?: string
+  trace_id?: string | null
+  content?: {
+    titles: string[]
+    copywriting: string
+    tags: string[]
+  }
+  quality?: {
+    quality_score: QualityScore
+    publish_gate: PublishGate
+  }
+  revision_entry?: RevisionResult
 }
 
 /**
@@ -263,7 +284,12 @@ export interface UpdateHistoryParams {
 export async function createHistory(
   topic: string,
   outline: { raw: string; pages: Page[] },
-  taskId?: string
+  taskId?: string,
+  metadata?: {
+    trace_id?: string | null
+    content?: { titles: string[]; copywriting: string; tags: string[] }
+    quality?: { quality_score: QualityScore; publish_gate: PublishGate }
+  }
 ): Promise<{ success: boolean; record_id?: string; error?: string }> {
   try {
     const response = await axios.post(
@@ -271,7 +297,10 @@ export async function createHistory(
       {
         topic,
         outline,
-        task_id: taskId
+        task_id: taskId,
+        trace_id: metadata?.trace_id,
+        content: metadata?.content,
+        quality: metadata?.quality
       },
       {
         timeout: 10000 // 10秒超时
@@ -791,6 +820,58 @@ export interface ContentResponse {
   error?: string
 }
 
+export interface QualityScore {
+  overall: number
+  topic_clarity: number
+  hook_strength: number
+  information_density: number
+  user_value: number
+  xhs_style_fit: number
+  originality: number
+  title_strength: number
+  copy_readability: number
+  tag_fit: number
+  cover_readability: number
+  compliance_risk: number
+  decision: 'approve' | 'revise' | 'block'
+  issues: string[]
+  suggestions: string[]
+}
+
+export interface PublishGate {
+  enabled: boolean
+  requires_user_confirm: boolean
+  assets_ready: boolean
+  title_ready: boolean
+  copy_ready: boolean
+  tags_ready: boolean
+  risk_checked: boolean
+}
+
+export interface QualityResponse {
+  success: boolean
+  trace_id?: string
+  evaluated_at?: string
+  quality_score?: QualityScore
+  publish_gate?: PublishGate
+  error?: string
+}
+
+export interface RevisionResult {
+  titles: string[]
+  copywriting: string
+  tags: string[]
+  revision_summary: string[]
+}
+
+export interface RevisionResponse {
+  success: boolean
+  trace_id?: string
+  revised_at?: string
+  revision?: RevisionResult
+  error?: string
+}
+
 // 生成标题、文案、标签
 export async function generateContent(
   topic: string,
@@ -800,5 +881,30 @@ export async function generateContent(
     topic,
     outline
   })
+  return response.data
+}
+
+export async function evaluateContent(params: {
+  topic: string
+  outline: string
+  titles: string[]
+  copywriting: string
+  tags: string[]
+  trace_id?: string | null
+}): Promise<QualityResponse> {
+  const response = await axios.post<QualityResponse>(`${API_BASE_URL}/quality/evaluate`, params)
+  return response.data
+}
+
+export async function reviseContent(params: {
+  topic: string
+  outline: string
+  titles: string[]
+  copywriting: string
+  tags: string[]
+  quality_score: QualityScore
+  trace_id?: string | null
+}): Promise<RevisionResponse> {
+  const response = await axios.post<RevisionResponse>(`${API_BASE_URL}/quality/revise`, params)
   return response.data
 }
