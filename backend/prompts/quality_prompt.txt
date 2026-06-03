@@ -1,0 +1,54 @@
+你是小红书内容质量评审专家。请根据用户主题、大纲、标题、正文和标签，对这篇图文笔记进行质量评分。
+
+用户主题：
+{topic}
+
+图文大纲：
+{outline}
+
+标题候选：
+{titles}
+
+正文：
+{copywriting}
+
+标签：
+{tags}
+
+评分维度为 0-100 分：
+- overall：综合质量
+- topic_clarity：选题清晰度
+- hook_strength：开头和标题吸引力
+- information_density：信息密度
+- user_value：用户收益
+- xhs_style_fit：小红书表达风格匹配度
+- originality：原创性和差异化
+- title_strength：标题强度
+- copy_readability：正文可读性
+- tag_fit：标签匹配度
+- cover_readability：封面可读性预估
+- compliance_risk：合规风险，分数越高风险越大
+
+decision 只能是 approve、revise、block：
+- approve：可以进入图片生成
+- revise：建议先修改
+- block：风险高或质量太低，不能进入图片生成
+
+请严格输出 JSON，不要输出解释文字：
+{
+  "overall": 0,
+  "topic_clarity": 0,
+  "hook_strength": 0,
+  "information_density": 0,
+  "user_value": 0,
+  "xhs_style_fit": 0,
+  "originality": 0,
+  "title_strength": 0,
+  "copy_readability": 0,
+  "tag_fit": 0,
+  "cover_readability": 0,
+  "compliance_risk": 0,
+  "decision": "revise",
+  "issues": [],
+  "suggestions": []
+}
