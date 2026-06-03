@@ -111,3 +111,29 @@ def test_evaluate_content_extracts_json_from_markdown_block():
 
     assert result["quality_score"]["decision"] == "revise"
     assert result["quality_score"]["issues"] == ["信息密度偏低"]
+
+
+def test_evaluate_content_allows_literal_json_braces_in_prompt_template():
+    client = FakeTextClient(json.dumps({
+        "overall": 82,
+        "compliance_risk": 8,
+        "decision": "approve",
+        "issues": [],
+        "suggestions": [],
+    }))
+    service = QualityService(
+        client=client,
+        text_config={"active_provider": "fake", "providers": {"fake": {}}},
+        prompt_template='topic={topic}\n请输出：{\n  "overall": 0\n}',
+    )
+
+    result = service.evaluate_content(
+        topic="主题",
+        outline="大纲",
+        titles=["标题"],
+        copywriting="正文",
+        tags=["标签"],
+    )
+
+    assert result["success"] is True
+    assert '"overall": 0' in client.calls[0]["prompt"]

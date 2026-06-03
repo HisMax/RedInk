@@ -19,6 +19,7 @@ from backend.services.content_quality import (
     create_trace_id,
     normalize_quality_score,
 )
+from backend.services.prompt_rendering import render_prompt_template
 from backend.utils.text_client import get_text_chat_client
 
 logger = logging.getLogger(__name__)
@@ -115,12 +116,15 @@ class QualityService:
             raise ValueError("copywriting 不能为空")
 
         current_trace_id = trace_id or create_trace_id()
-        prompt = self.prompt_template.format(
-            topic=topic,
-            outline=outline,
-            titles="\n".join(titles),
-            copywriting=copywriting,
-            tags=" ".join([f"#{tag}" for tag in tags]),
+        prompt = render_prompt_template(
+            self.prompt_template,
+            {
+                "topic": topic,
+                "outline": outline,
+                "titles": "\n".join(titles),
+                "copywriting": copywriting,
+                "tags": " ".join([f"#{tag}" for tag in tags]),
+            },
         )
 
         provider_config = self._provider_config()

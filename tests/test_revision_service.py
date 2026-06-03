@@ -64,3 +64,29 @@ def test_suggest_revisions_requires_quality_score():
             tags=["标签"],
             quality_score={},
         )
+
+
+def test_suggest_revisions_allows_literal_json_braces_in_prompt_template():
+    client = FakeTextClient(json.dumps({
+        "titles": ["新标题"],
+        "copywriting": "新正文",
+        "tags": ["标签"],
+        "revision_summary": ["补充细节"],
+    }, ensure_ascii=False))
+    service = RevisionService(
+        client=client,
+        text_config={"active_provider": "fake", "providers": {"fake": {}}},
+        prompt_template='topic={topic}\n输出格式：{\n  "titles": []\n}',
+    )
+
+    result = service.suggest_revisions(
+        topic="主题",
+        outline="大纲",
+        titles=["标题"],
+        copywriting="正文",
+        tags=["标签"],
+        quality_score={"issues": ["问题"], "suggestions": ["建议"]},
+    )
+
+    assert result["success"] is True
+    assert '"titles": []' in client.calls[0]["prompt"]

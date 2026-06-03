@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from backend.services.content_quality import create_trace_id
+from backend.services.prompt_rendering import render_prompt_template
 from backend.utils.text_client import get_text_chat_client
 
 
@@ -89,14 +90,17 @@ class RevisionService:
             raise ValueError("quality_score 不能为空")
 
         current_trace_id = trace_id or create_trace_id()
-        prompt = self.prompt_template.format(
-            topic=topic,
-            outline=outline,
-            titles="\n".join(titles),
-            copywriting=copywriting,
-            tags=" ".join([f"#{tag}" for tag in tags]),
-            issues="\n".join(quality_score.get("issues", [])),
-            suggestions="\n".join(quality_score.get("suggestions", [])),
+        prompt = render_prompt_template(
+            self.prompt_template,
+            {
+                "topic": topic,
+                "outline": outline,
+                "titles": "\n".join(titles),
+                "copywriting": copywriting,
+                "tags": " ".join([f"#{tag}" for tag in tags]),
+                "issues": "\n".join(quality_score.get("issues", [])),
+                "suggestions": "\n".join(quality_score.get("suggestions", [])),
+            },
         )
         provider_config = self._provider_config()
         response_text = self.client.generate_text(
