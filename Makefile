@@ -1,4 +1,5 @@
 REPORT_DIR ?= reports
+EVAL_CASES ?= tests/fixtures/xhs_quality_cases.json
 EVAL_JSONL ?= $(REPORT_DIR)/xhs-quality-eval.jsonl
 EVAL_MARKDOWN ?= $(REPORT_DIR)/xhs-quality-eval.md
 EVAL_PREVIOUS ?=
@@ -37,6 +38,7 @@ REEVAL_LIVE ?= 0
 REEVAL_UPDATE_LIBRARY ?= 0
 REEVAL_REPORT_ONLY ?= 0
 LOOP_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-loop
+LOOP_CASES ?= tests/fixtures/xhs_quality_cases.json
 LOOP_CASE_LIBRARY ?= $(LOOP_REPORT_DIR)/xhs-content-cases.jsonl
 LOOP_REPLAY_INDEX ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-index.jsonl
 LOOP_RUN_ID ?= xhs_quality_loop
@@ -62,10 +64,18 @@ LOOP_APPLY_APPROVED ?= 0
 LOOP_PROMOTED_CASES ?= $(LOOP_REPORT_DIR)/xhs-quality-cases.next.json
 LOOP_PROMOTED_VERSION_ID ?= xhs_quality_cases_next
 LOOP_PROMOTE_APPROVED ?= 0
+AB_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-ab
+AB_BASE_CASES ?= tests/fixtures/xhs_quality_cases.json
+AB_CANDIDATE_CASES ?= $(LOOP_PROMOTED_CASES)
+AB_RUN_ID ?= xhs_quality_ab
+AB_MIN_OVERALL ?= $(EVAL_MIN_OVERALL)
+AB_MAX_SCORE_DROP ?= $(EVAL_MAX_SCORE_DROP)
+AB_LIVE ?= 0
+AB_REPORT_ONLY ?= 0
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
-EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
+EVAL_ARGS := --cases "$(EVAL_CASES)" --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
 EVAL_ARGS += --run-id "$(EVAL_RUN_ID)"
 EVAL_ARGS += --min-overall "$(EVAL_MIN_OVERALL)"
 EVAL_ARGS += --max-score-drop "$(EVAL_MAX_SCORE_DROP)"
@@ -128,7 +138,7 @@ ifeq ($(REEVAL_REPORT_ONLY),1)
 REEVAL_ARGS += --report-only
 endif
 
-LOOP_ARGS := --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
+LOOP_ARGS := --cases "$(LOOP_CASES)" --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
 LOOP_ARGS += --replay-index "$(LOOP_REPLAY_INDEX)"
 LOOP_ARGS += --run-id "$(LOOP_RUN_ID)"
 LOOP_ARGS += --min-overall "$(LOOP_MIN_OVERALL)"
@@ -181,11 +191,27 @@ else
 PROMOTE_EVAL_CASE_ARGS += --dry-run
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases test-quality
+AB_ARGS := --base-cases "$(AB_BASE_CASES)" --candidate-cases "$(AB_CANDIDATE_CASES)"
+AB_ARGS += --report-dir "$(AB_REPORT_DIR)" --run-id "$(AB_RUN_ID)"
+AB_ARGS += --min-overall "$(AB_MIN_OVERALL)" --max-score-drop "$(AB_MAX_SCORE_DROP)"
+
+ifeq ($(AB_LIVE),1)
+AB_ARGS += --live
+endif
+
+ifeq ($(AB_REPORT_ONLY),1)
+AB_ARGS += --report-only
+endif
+
+.PHONY: eval-quality eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_quality_eval.py $(EVAL_ARGS)
+
+eval-quality-ab:
+	@mkdir -p "$(AB_REPORT_DIR)"
+	@$(PYTHON) scripts/run_xhs_quality_ab.py $(AB_ARGS)
 
 summarize-cases:
 	@mkdir -p "$(REPORT_DIR)"

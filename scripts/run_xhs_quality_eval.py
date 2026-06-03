@@ -16,9 +16,10 @@ from backend.services.xhs_quality_eval import (
     DEFAULT_MAX_SCORE_DROP,
     DEFAULT_MIN_OVERALL,
     apply_quality_baseline,
+    case_set_metadata,
     compare_quality_trend,
+    load_quality_case_set,
     load_previous_eval_results,
-    load_quality_cases,
     run_quality_eval,
     write_jsonl_report,
     write_markdown_report,
@@ -59,7 +60,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     run_id = args.run_id or "xhs_quality_eval"
-    cases = load_quality_cases(args.cases)
+    case_set = load_quality_case_set(args.cases)
+    cases = case_set["cases"]
     prompt_examples = []
     prompt_examples_payload = None
     if args.prompt_examples_jsonl:
@@ -114,6 +116,7 @@ def main() -> int:
     payload = {
         "mode": "live" if args.live else "dry-run",
         "run_id": run_id,
+        "case_set": case_set_metadata(case_set),
         "case_count": len(cases),
         "success_count": sum(1 for result in results if result.get("error") is None),
         "baseline": baseline,

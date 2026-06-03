@@ -13,14 +13,63 @@ DEFAULT_CASES_PATH = Path("tests/fixtures/xhs_quality_cases.json")
 DEFAULT_MIN_OVERALL = 80
 DEFAULT_ALLOWED_DECISIONS = ("approve",)
 DEFAULT_MAX_SCORE_DROP = 3
+CASE_SET_SCHEMA_VERSION = "xhs_quality_case_set.v1"
+VERSIONED_CASES_SCHEMA_VERSION = "xhs_quality_cases_version.v1"
 
 
 def load_quality_cases(path: str | Path = DEFAULT_CASES_PATH) -> List[Dict[str, Any]]:
     """Load and validate Xiaohongshu quality seed cases."""
+    return load_quality_case_set(path)["cases"]
+
+
+def load_quality_case_set(path: str | Path = DEFAULT_CASES_PATH) -> Dict[str, Any]:
+    """Load legacy or versioned Xiaohongshu quality case sets."""
     case_path = Path(path)
     with case_path.open("r", encoding="utf-8") as f:
-        cases = json.load(f)
+        payload = json.load(f)
 
+    if isinstance(payload, list):
+        case_set = {
+            "schema_version": CASE_SET_SCHEMA_VERSION,
+            "path": str(case_path),
+            "format": "legacy",
+            "source_schema_version": None,
+            "version_id": None,
+            "created_at": None,
+            "metadata": {},
+            "cases": payload,
+        }
+    elif isinstance(payload, dict):
+        source_schema_version = payload.get("schema_version")
+        if source_schema_version != VERSIONED_CASES_SCHEMA_VERSION:
+            raise ValueError(
+                "versioned quality case set schema_version must be "
+                f"{VERSIONED_CASES_SCHEMA_VERSION}"
+            )
+        case_set = {
+            "schema_version": CASE_SET_SCHEMA_VERSION,
+            "path": str(case_path),
+            "format": "versioned",
+            "source_schema_version": source_schema_version,
+            "version_id": payload.get("version_id"),
+            "created_at": payload.get("created_at"),
+            "metadata": payload.get("metadata") or {},
+            "cases": payload.get("cases"),
+        }
+    else:
+        raise ValueError("quality cases fixture must be a JSON array or versioned object")
+
+    _validate_quality_cases(case_set["cases"])
+    case_set["case_count"] = len(case_set["cases"])
+    return case_set
+
+
+def case_set_metadata(case_set: Dict[str, Any]) -> Dict[str, Any]:
+    """Return case set metadata without embedding case rows."""
+    return {key: value for key, value in case_set.items() if key != "cases"}
+
+
+def _validate_quality_cases(cases: Any) -> None:
     if not isinstance(cases, list):
         raise ValueError("quality cases fixture must be a JSON array")
 
@@ -33,8 +82,6 @@ def load_quality_cases(path: str | Path = DEFAULT_CASES_PATH) -> List[Dict[str, 
             raise ValueError(f"quality case {case.get('id', index)} missing fields: {', '.join(missing)}")
         if not isinstance(case["expected_traits"], list):
             raise ValueError(f"quality case {case['id']} expected_traits must be a list")
-
-    return cases
 
 
 def load_previous_eval_results(path: str | Path) -> List[Dict[str, Any]]:

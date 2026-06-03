@@ -295,6 +295,19 @@ Write the new version file without overwriting the base fixture:
 make promote-eval-cases LOOP_PROMOTE_APPROVED=1
 ```
 
+Run evaluation or the full loop against a promoted versioned case set:
+
+```bash
+make eval-quality EVAL_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+make xhs-quality-loop LOOP_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+```
+
+Compare the base fixture with a promoted candidate set:
+
+```bash
+make eval-quality-ab AB_CANDIDATE_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+```
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

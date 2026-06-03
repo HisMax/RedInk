@@ -28,7 +28,9 @@ from backend.services.content_revision_loop import (
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
     build_case_outline,
+    case_set_metadata,
     compare_quality_trend,
+    load_quality_case_set,
     load_previous_eval_results,
     load_quality_cases,
     run_quality_eval,
@@ -171,12 +173,63 @@ class FakeReEvaluationQualityService:
         }
 
 
+def _versioned_quality_cases_path(tmp_path, *, version_id="xhs_quality_cases_test_v2"):
+    version_path = tmp_path / f"{version_id}.json"
+    version_path.write_text(
+        json.dumps({
+            "schema_version": "xhs_quality_cases_version.v1",
+            "version_id": version_id,
+            "created_at": "2026-06-04T10:00:00Z",
+            "metadata": {
+                "base_cases": "tests/fixtures/xhs_quality_cases.json",
+                "base_case_count": 1,
+                "candidate_count": 1,
+                "promoted_count": 1,
+                "total_count": 2,
+            },
+            "cases": [
+                {
+                    "id": "coffee_beginner",
+                    "category": "知识科普",
+                    "topic": "新手如何学会手冲咖啡",
+                    "expected_traits": ["有具体步骤", "有参数"],
+                },
+                {
+                    "id": "approved_hook_density",
+                    "category": "quality_regression",
+                    "topic": "标题钩子和信息密度验证",
+                    "expected_traits": ["标题钩子", "可执行细节"],
+                    "source_candidate_id": "apply_001:eval_case_001",
+                },
+            ],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return version_path
+
+
 def test_load_quality_cases_reads_fixture():
     cases = load_quality_cases("tests/fixtures/xhs_quality_cases.json")
 
     assert len(cases) == 5
     assert cases[0]["id"] == "coffee_beginner"
     assert cases[0]["topic"] == "新手如何学会手冲咖啡"
+
+
+def test_load_quality_case_set_reads_versioned_payload(tmp_path):
+    version_path = _versioned_quality_cases_path(tmp_path)
+
+    case_set = load_quality_case_set(version_path)
+    cases = load_quality_cases(version_path)
+    metadata = case_set_metadata(case_set)
+
+    assert case_set["format"] == "versioned"
+    assert case_set["version_id"] == "xhs_quality_cases_test_v2"
+    assert case_set["source_schema_version"] == "xhs_quality_cases_version.v1"
+    assert case_set["case_count"] == 2
+    assert cases[-1]["id"] == "approved_hook_density"
+    assert metadata["path"] == str(version_path)
+    assert "cases" not in metadata
 
 
 def test_build_case_outline_includes_expected_traits():
@@ -1257,6 +1310,23 @@ def test_cli_dry_run_outputs_summary_json():
     assert payload["baseline"]["passed"] is True
 
 
+def test_cli_reports_versioned_case_set_metadata(tmp_path):
+    version_path = _versioned_quality_cases_path(tmp_path)
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/run_xhs_quality_eval.py", "--cases", str(version_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["case_count"] == 2
+    assert payload["case_set"]["format"] == "versioned"
+    assert payload["case_set"]["version_id"] == "xhs_quality_cases_test_v2"
+    assert payload["results"][-1]["case_id"] == "approved_hook_density"
+
+
 def test_cli_loads_prompt_examples_for_quality_eval(tmp_path):
     examples_path = tmp_path / "quality_examples.jsonl"
     examples_path.write_text(
@@ -1603,6 +1673,25 @@ def test_quality_loop_writes_run_report_and_replay_index(tmp_path):
     assert index_rows[-1]["run_id"] == "loop_report_001"
     assert index_rows[-1]["run_report"] == str(payload["paths"]["run_report"])
     assert index_rows[-1]["quality_examples_count"] == 5
+
+
+def test_quality_loop_records_versioned_case_set_metadata(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    version_path = _versioned_quality_cases_path(tmp_path)
+
+    payload = run_quality_loop(
+        cases_path=version_path,
+        report_dir=report_dir,
+        run_id="loop_versioned_001",
+        min_overall=95,
+    )
+
+    run_report = json.loads(payload["paths"]["run_report"].read_text(encoding="utf-8"))
+    assert payload["case_set"]["format"] == "versioned"
+    assert payload["case_set"]["version_id"] == "xhs_quality_cases_test_v2"
+    assert payload["evaluation"]["case_count"] == 2
+    assert run_report["parameters"]["case_set"]["version_id"] == "xhs_quality_cases_test_v2"
+    assert run_report["metrics"]["evaluation_case_count"] == 2
 
 
 def test_quality_loop_replay_index_keeps_distinct_run_reports(tmp_path):
@@ -2180,6 +2269,53 @@ def test_promote_approved_eval_case_candidates_cli_dry_run_and_promote(tmp_path)
     assert version["metadata"]["promoted_count"] == 1
 
 
+def test_quality_ab_cli_compares_base_and_versioned_candidate(tmp_path):
+    base_path = tmp_path / "base-cases.json"
+    base_path.write_text(
+        json.dumps([
+            {
+                "id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "expected_traits": ["有具体步骤", "有参数"],
+            }
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_ab_v2")
+    report_dir = tmp_path / "ab_reports"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_ab.py",
+            "--base-cases",
+            str(base_path),
+            "--candidate-cases",
+            str(candidate_path),
+            "--report-dir",
+            str(report_dir),
+            "--run-id",
+            "ab_cli_001",
+            "--min-overall",
+            "80",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == "xhs_quality_ab_comparison.v1"
+    assert payload["base"]["case_set"]["format"] == "legacy"
+    assert payload["candidate"]["case_set"]["version_id"] == "xhs_quality_cases_ab_v2"
+    assert payload["summary"]["shared_case_count"] == 1
+    assert payload["summary"]["added_case_count"] == 1
+    assert payload["candidate"]["comparison"]["skipped_count"] == 1
+    assert (report_dir / "base" / "xhs-quality-eval.jsonl").exists()
+    assert (report_dir / "candidate" / "xhs-quality-eval.jsonl").exists()
+
+
 def test_revision_plan_cli_writes_revision_requests(tmp_path):
     library_path = tmp_path / "content_cases.jsonl"
     completed = subprocess.run(
@@ -2444,6 +2580,29 @@ def test_make_eval_quality_runs_dry_run_report(tmp_path):
     assert (tmp_path / "xhs-quality-eval.md").exists()
 
 
+def test_make_eval_quality_accepts_versioned_cases_path(tmp_path):
+    version_path = _versioned_quality_cases_path(tmp_path)
+    report_dir = tmp_path / "reports"
+
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality",
+            f"REPORT_DIR={report_dir}",
+            f"PYTHON={sys.executable}",
+            f"EVAL_CASES={version_path}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["case_count"] == 2
+    assert payload["case_set"]["version_id"] == "xhs_quality_cases_test_v2"
+    assert (report_dir / "xhs-quality-eval.jsonl").exists()
+
+
 def test_make_eval_quality_can_append_case_library(tmp_path):
     library_path = tmp_path / "content_cases.jsonl"
 
@@ -2492,3 +2651,41 @@ def test_make_eval_quality_can_compare_previous_report(tmp_path):
     assert payload["baseline"]["passed"] is True
     assert payload["comparison"]["passed"] is False
     assert payload["comparison"]["failed_count"] == 1
+
+
+def test_make_eval_quality_ab_compares_case_sets(tmp_path):
+    base_path = tmp_path / "base-cases.json"
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_make_ab_v2")
+    report_dir = tmp_path / "reports"
+    base_path.write_text(
+        json.dumps([
+            {
+                "id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "expected_traits": ["有具体步骤", "有参数"],
+            }
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality-ab",
+            f"REPORT_DIR={report_dir}",
+            f"PYTHON={sys.executable}",
+            f"AB_BASE_CASES={base_path}",
+            f"AB_CANDIDATE_CASES={candidate_path}",
+            "AB_MIN_OVERALL=80",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["candidate"]["case_set"]["version_id"] == "xhs_quality_cases_make_ab_v2"
+    assert payload["summary"]["shared_case_count"] == 1
+    assert payload["summary"]["added_case_count"] == 1
+    assert (report_dir / "xhs-quality-ab" / "candidate" / "xhs-quality-eval.md").exists()

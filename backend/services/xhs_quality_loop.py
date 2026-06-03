@@ -31,7 +31,8 @@ from backend.services.xhs_quality_eval import (
     DEFAULT_ALLOWED_DECISIONS,
     DEFAULT_CASES_PATH,
     apply_quality_baseline,
-    load_quality_cases,
+    case_set_metadata,
+    load_quality_case_set,
     run_quality_eval,
     write_jsonl_report,
     write_markdown_report,
@@ -76,7 +77,8 @@ def run_quality_loop(
     if prompt_examples_path:
         prompt_examples = load_prompt_examples(prompt_examples_path, limit=prompt_examples_limit)
 
-    cases = load_quality_cases(cases_path)
+    case_set = load_quality_case_set(cases_path)
+    cases = case_set["cases"]
     eval_results = run_quality_eval(
         cases,
         live=live_content,
@@ -155,6 +157,7 @@ def run_quality_loop(
             "loaded_count": len(prompt_examples),
             "limit": prompt_examples_limit,
         },
+        "case_set": case_set_metadata(case_set),
         "evaluation": {
             "case_count": len(cases),
             "success_count": sum(1 for result in eval_results if result.get("error") is None),
@@ -292,6 +295,7 @@ def _build_run_report(
         "mode": payload["mode"],
         "parameters": {
             "cases_path": str(cases_path),
+            "case_set": payload["case_set"],
             "report_dir": str(report_dir),
             "case_library_path": str(case_library),
             "replay_index_path": str(replay_index),

@@ -307,6 +307,19 @@ make promote-eval-cases
 make promote-eval-cases LOOP_PROMOTE_APPROVED=1
 ```
 
+用晋级后的 versioned 评测集运行单次评测或完整闭环：
+
+```bash
+make eval-quality EVAL_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+make xhs-quality-loop LOOP_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+```
+
+对比基础 fixture 和晋级后的候选评测集：
+
+```bash
+make eval-quality-ab AB_CANDIDATE_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
+```
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash
