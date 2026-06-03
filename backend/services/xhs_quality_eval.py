@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 DEFAULT_CASES_PATH = Path("tests/fixtures/xhs_quality_cases.json")
+DEFAULT_MIN_OVERALL = 80
+DEFAULT_ALLOWED_DECISIONS = ("approve",)
 
 
 def load_quality_cases(path: str | Path = DEFAULT_CASES_PATH) -> List[Dict[str, Any]]:
@@ -89,6 +91,44 @@ def run_quality_eval(
     return results
 
 
+def apply_quality_baseline(
+    results: Iterable[Dict[str, Any]],
+    *,
+    min_overall: int = DEFAULT_MIN_OVERALL,
+    allowed_decisions: Optional[Iterable[str]] = None,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Annotate evaluation results with baseline gate status."""
+    allowed = list(allowed_decisions or DEFAULT_ALLOWED_DECISIONS)
+    annotated = []
+    failures = []
+
+    for result in results:
+        row = dict(result)
+        reason = _baseline_failure_reason(row, min_overall, allowed)
+        row["baseline_passed"] = not reason
+        row["baseline_reason"] = reason
+        annotated.append(row)
+
+        if reason:
+            failures.append({
+                "case_id": row.get("case_id"),
+                "topic": row.get("topic"),
+                "overall": row.get("overall"),
+                "decision": row.get("decision"),
+                "reason": reason,
+            })
+
+    return annotated, {
+        "passed": not failures,
+        "checked_count": len(annotated),
+        "passed_count": len(annotated) - len(failures),
+        "failed_count": len(failures),
+        "min_overall": min_overall,
+        "allowed_decisions": allowed,
+        "failures": failures,
+    }
+
+
 def write_jsonl_report(results: Iterable[Dict[str, Any]], path: str | Path) -> None:
     """Write one evaluation result per line as JSONL."""
     report_path = Path(path)
@@ -105,16 +145,18 @@ def write_markdown_report(results: Iterable[Dict[str, Any]], path: str | Path) -
     lines = [
         "# Xiaohongshu Quality Evaluation",
         "",
-        "| Case | Category | Decision | Overall | Trace | Titles | Copy Len | Tags | Issues | Suggestions | Error |",
-        "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Case | Category | Decision | Overall | Trace | Titles | Copy Len | Tags | Issues | Suggestions | Baseline | Error |",
+        "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for result in results:
         error = (result.get("error") or "").replace("|", "\\|")
-        row = {**result, "error": error}
+        baseline = _format_baseline_status(result)
+        baseline_reason = (result.get("baseline_reason") or "").replace("|", "\\|")
+        row = {**result, "baseline": baseline, "error": error or baseline_reason}
         lines.append(
             "| {case_id} | {category} | {decision} | {overall} | {trace_id} | "
             "{title_count} | {copywriting_length} | {tag_count} | {issues_count} | "
-            "{suggestions_count} | {error} |".format(**row)
+            "{suggestions_count} | {baseline} | {error} |".format(**row)
         )
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -195,6 +237,35 @@ def _error_result(case: Dict[str, Any], error: str) -> Dict[str, Any]:
         "publish_gate_enabled": False,
         "error": error,
     }
+
+
+def _baseline_failure_reason(result: Dict[str, Any], min_overall: int, allowed_decisions: List[str]) -> str:
+    if result.get("error"):
+        return f"evaluation error: {result['error']}"
+
+    overall = result.get("overall")
+    if not isinstance(overall, (int, float)):
+        return "overall missing"
+    if overall < min_overall:
+        return f"overall {_format_number(overall)} below {_format_number(min_overall)}"
+
+    decision = result.get("decision")
+    if decision not in allowed_decisions:
+        return f"decision {decision} not allowed"
+
+    return ""
+
+
+def _format_baseline_status(result: Dict[str, Any]) -> str:
+    if "baseline_passed" not in result:
+        return "n/a"
+    return "pass" if result["baseline_passed"] else "fail"
+
+
+def _format_number(value: int | float) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _as_list(value: Any) -> List[Any]:

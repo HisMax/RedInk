@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 from backend.services.xhs_quality_eval import (
+    apply_quality_baseline,
     build_case_outline,
     load_quality_cases,
     run_quality_eval,
@@ -123,6 +124,95 @@ def test_run_quality_eval_live_uses_injected_services():
     assert results[0]["suggestions_count"] == 1
 
 
+def test_apply_quality_baseline_marks_failures_by_score_decision_and_error():
+    results = [
+        {
+            "case_id": "passed_case",
+            "category": "知识科普",
+            "topic": "通过案例",
+            "trace_id": "trace_1",
+            "titles": ["标题"],
+            "title_count": 1,
+            "copywriting_length": 30,
+            "tag_count": 2,
+            "overall": 87,
+            "decision": "approve",
+            "issues_count": 0,
+            "suggestions_count": 1,
+            "publish_gate_enabled": False,
+            "error": None,
+        },
+        {
+            "case_id": "low_score",
+            "category": "知识科普",
+            "topic": "低分案例",
+            "trace_id": "trace_2",
+            "titles": ["标题"],
+            "title_count": 1,
+            "copywriting_length": 30,
+            "tag_count": 2,
+            "overall": 79,
+            "decision": "approve",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "publish_gate_enabled": False,
+            "error": None,
+        },
+        {
+            "case_id": "needs_revision",
+            "category": "知识科普",
+            "topic": "返修案例",
+            "trace_id": "trace_3",
+            "titles": ["标题"],
+            "title_count": 1,
+            "copywriting_length": 30,
+            "tag_count": 2,
+            "overall": 86,
+            "decision": "revise",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "publish_gate_enabled": False,
+            "error": None,
+        },
+        {
+            "case_id": "error_case",
+            "category": "知识科普",
+            "topic": "错误案例",
+            "trace_id": None,
+            "titles": [],
+            "title_count": 0,
+            "copywriting_length": 0,
+            "tag_count": 0,
+            "overall": None,
+            "decision": "error",
+            "issues_count": 0,
+            "suggestions_count": 0,
+            "publish_gate_enabled": False,
+            "error": "内容生成失败",
+        },
+    ]
+
+    annotated, baseline = apply_quality_baseline(
+        results,
+        min_overall=80,
+        allowed_decisions=["approve"],
+    )
+
+    assert baseline["passed"] is False
+    assert baseline["passed_count"] == 1
+    assert baseline["failed_count"] == 3
+    assert annotated[0]["baseline_passed"] is True
+    assert annotated[0]["baseline_reason"] == ""
+    assert annotated[1]["baseline_reason"] == "overall 79 below 80"
+    assert annotated[2]["baseline_reason"] == "decision revise not allowed"
+    assert annotated[3]["baseline_reason"] == "evaluation error: 内容生成失败"
+    assert [failure["case_id"] for failure in baseline["failures"]] == [
+        "low_score",
+        "needs_revision",
+        "error_case",
+    ]
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -142,17 +232,20 @@ def test_report_writers_create_jsonl_and_markdown(tmp_path):
             "error": None,
         }
     ]
+    annotated, _baseline = apply_quality_baseline(results, min_overall=80, allowed_decisions=["approve"])
     jsonl_path = tmp_path / "report.jsonl"
     markdown_path = tmp_path / "report.md"
 
-    write_jsonl_report(results, jsonl_path)
-    write_markdown_report(results, markdown_path)
+    write_jsonl_report(annotated, jsonl_path)
+    write_markdown_report(annotated, markdown_path)
 
     jsonl_rows = [json.loads(line) for line in jsonl_path.read_text(encoding="utf-8").splitlines()]
     assert jsonl_rows[0]["case_id"] == "coffee_beginner"
+    assert jsonl_rows[0]["baseline_passed"] is True
 
     markdown = markdown_path.read_text(encoding="utf-8")
     assert "| coffee_beginner | 知识科普 | approve | 87 |" in markdown
+    assert "| pass |" in markdown
 
 
 def test_cli_dry_run_outputs_summary_json():
@@ -167,3 +260,17 @@ def test_cli_dry_run_outputs_summary_json():
     assert payload["mode"] == "dry-run"
     assert payload["case_count"] == 5
     assert len(payload["results"]) == 5
+    assert payload["baseline"]["passed"] is True
+
+
+def test_cli_exits_nonzero_when_baseline_fails():
+    completed = subprocess.run(
+        [sys.executable, "scripts/run_xhs_quality_eval.py", "--min-overall", "95"],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 1
+    assert payload["baseline"]["passed"] is False
+    assert payload["baseline"]["failed_count"] == 5
