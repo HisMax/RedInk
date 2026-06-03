@@ -1,0 +1,32 @@
+[
+  {
+    "id": "coffee_beginner",
+    "category": "知识科普",
+    "topic": "新手如何学会手冲咖啡",
+    "expected_traits": ["有具体步骤", "有参数", "标题适合新手", "标签包含咖啡"]
+  },
+  {
+    "id": "office_efficiency",
+    "category": "职场效率",
+    "topic": "打工人如何用AI整理会议纪要",
+    "expected_traits": ["有工具流程", "有节省时间的收益", "避免夸大承诺"]
+  },
+  {
+    "id": "local_life",
+    "category": "本地生活",
+    "topic": "上海周末适合一个人去的咖啡馆",
+    "expected_traits": ["适合收藏", "有筛选维度", "没有虚构具体地址"]
+  },
+  {
+    "id": "personal_ip",
+    "category": "个人IP",
+    "topic": "自由职业者如何建立稳定输出习惯",
+    "expected_traits": ["有个人成长角度", "建议可执行", "语气真诚"]
+  },
+  {
+    "id": "beauty_lifestyle",
+    "category": "美妆穿搭",
+    "topic": "早八通勤快速出门妆容",
+    "expected_traits": ["步骤清晰", "适合图文分页", "不夸大效果"]
+  }
+]
