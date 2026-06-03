@@ -78,6 +78,18 @@ def append_case_records(records: Iterable[Dict[str, Any]], path: str | Path) -> 
     return count
 
 
+def save_case_records(records: Iterable[Dict[str, Any]], path: str | Path) -> int:
+    """Rewrite a JSONL case library and return the count written."""
+    case_path = Path(path)
+    case_path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with case_path.open("w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            count += 1
+    return count
+
+
 def load_case_records(path: str | Path) -> List[Dict[str, Any]]:
     """Load local content case JSONL records."""
     case_path = Path(path)
@@ -85,6 +97,52 @@ def load_case_records(path: str | Path) -> List[Dict[str, Any]]:
         return []
     with case_path.open("r", encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def update_case_review(
+    records: Iterable[Dict[str, Any]],
+    record_id: str,
+    *,
+    status: Optional[str] = None,
+    publishable: Optional[bool] = None,
+    viral_potential: Optional[int] = None,
+    issue_types: Optional[List[str]] = None,
+    selected_title: Optional[str] = None,
+    edited_copywriting: Optional[str] = None,
+    notes: Optional[str] = None,
+    reviewed_at: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Update a single case record's human review fields."""
+    updated_records = []
+    updated_record = None
+
+    for record in records:
+        row = dict(record)
+        if row.get("record_id") == record_id:
+            review = dict(row.get("human_review") or {})
+            if status is not None:
+                review["status"] = status
+            if publishable is not None:
+                review["publishable"] = publishable
+            if viral_potential is not None:
+                review["viral_potential"] = viral_potential
+            if issue_types is not None:
+                review["issue_types"] = issue_types
+            if selected_title is not None:
+                review["selected_title"] = selected_title
+            if edited_copywriting is not None:
+                review["edited_copywriting"] = edited_copywriting
+            if notes is not None:
+                review["notes"] = notes
+            review["reviewed_at"] = reviewed_at or _utc_now()
+            row["human_review"] = review
+            updated_record = row
+        updated_records.append(row)
+
+    if updated_record is None:
+        raise ValueError(f"content case record not found: {record_id}")
+
+    return updated_records, updated_record
 
 
 def _utc_now() -> str:

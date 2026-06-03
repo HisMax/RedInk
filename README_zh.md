@@ -229,6 +229,12 @@ make eval-quality EVAL_LIVE=1
 make eval-quality EVAL_CASE_LIBRARY=reports/xhs-content-cases.jsonl EVAL_RUN_ID=manual_eval_001
 ```
 
+人工复盘后标注某一条案例：
+
+```bash
+uv run python scripts/review_xhs_content_case.py --library reports/xhs-content-cases.jsonl --record-id manual_eval_001:coffee_beginner --publishable true --viral-potential 5 --issue-type hook_weak --selected-title "收藏：新手如何学会手冲咖啡完整流程" --notes "可进入发布池"
+```
+
 ---
 
 ## 🔧 配置说明

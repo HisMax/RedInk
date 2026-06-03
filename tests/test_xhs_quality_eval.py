@@ -6,6 +6,8 @@ from backend.services.content_case_library import (
     append_case_records,
     build_case_records,
     load_case_records,
+    save_case_records,
+    update_case_review,
 )
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
@@ -350,6 +352,60 @@ def test_content_case_library_appends_review_ready_records(tmp_path):
     assert loaded[0]["human_review"]["issue_types"] == []
 
 
+def test_content_case_library_updates_human_review_fields(tmp_path):
+    results = [
+        {
+            "case_id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "trace_id": "xhs_fake_trace",
+            "titles": ["标题A", "标题B"],
+            "copywriting": "正文内容",
+            "tags": ["咖啡", "新手"],
+            "overall": 87,
+            "decision": "approve",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        }
+    ]
+    records = build_case_records(
+        results,
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+
+    updated_records, updated = update_case_review(
+        records,
+        "eval_001:coffee_beginner",
+        status="reviewed",
+        publishable=True,
+        viral_potential=5,
+        issue_types=["title_generic", "hook_weak"],
+        selected_title="标题B",
+        edited_copywriting="人工改稿正文",
+        notes="可以进入发布池",
+        reviewed_at="2026-06-04T10:00:00Z",
+    )
+    library_path = tmp_path / "content_cases.jsonl"
+    save_case_records(updated_records, library_path)
+    loaded = load_case_records(library_path)
+
+    assert updated["human_review"]["status"] == "reviewed"
+    assert loaded[0]["human_review"]["publishable"] is True
+    assert loaded[0]["human_review"]["viral_potential"] == 5
+    assert loaded[0]["human_review"]["issue_types"] == ["title_generic", "hook_weak"]
+    assert loaded[0]["human_review"]["selected_title"] == "标题B"
+    assert loaded[0]["human_review"]["edited_copywriting"] == "人工改稿正文"
+    assert loaded[0]["human_review"]["notes"] == "可以进入发布池"
+    assert loaded[0]["human_review"]["reviewed_at"] == "2026-06-04T10:00:00Z"
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -423,6 +479,65 @@ def test_cli_can_append_content_case_library(tmp_path):
     assert records[0]["run_id"] == "eval_cli_001"
     assert records[0]["content"]["copywriting"]
     assert records[0]["human_review"]["status"] == "unreviewed"
+
+
+def test_review_cli_updates_content_case_library_record(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--case-library",
+            str(library_path),
+            "--run-id",
+            "eval_cli_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["case_library"]["saved_count"] == 5
+
+    review = subprocess.run(
+        [
+            sys.executable,
+            "scripts/review_xhs_content_case.py",
+            "--library",
+            str(library_path),
+            "--record-id",
+            "eval_cli_001:coffee_beginner",
+            "--status",
+            "reviewed",
+            "--publishable",
+            "true",
+            "--viral-potential",
+            "5",
+            "--issue-type",
+            "title_generic",
+            "--issue-type",
+            "hook_weak",
+            "--selected-title",
+            "收藏：新手如何学会手冲咖啡完整流程",
+            "--edited-copywriting",
+            "人工改稿正文",
+            "--notes",
+            "可以进入发布池",
+            "--reviewed-at",
+            "2026-06-04T10:00:00Z",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    review_payload = json.loads(review.stdout)
+    records = load_case_records(library_path)
+    assert review_payload["updated"] is True
+    assert review_payload["record_id"] == "eval_cli_001:coffee_beginner"
+    assert records[0]["human_review"]["publishable"] is True
+    assert records[0]["human_review"]["viral_potential"] == 5
+    assert records[0]["human_review"]["issue_types"] == ["title_generic", "hook_weak"]
 
 
 def test_cli_exits_nonzero_when_baseline_fails():
