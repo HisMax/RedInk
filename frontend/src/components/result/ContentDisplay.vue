@@ -7,7 +7,7 @@
           <path d="M12 5v14M5 12h14"/>
         </svg>
         <span v-if="loading" class="spinner"></span>
-        {{ loading ? '生成中...' : '生成标题、文案和标签' }}
+        {{ loading ? '生成中...' : '重新生成标题、文案和标签' }}
       </button>
     </div>
 

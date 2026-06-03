@@ -20,6 +20,8 @@
       </div>
     </div>
 
+    <QualityPreflightPanel />
+
     <div class="outline-grid">
       <div 
         v-for="(page, idx) in store.outline.pages" 
@@ -76,6 +78,7 @@ import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import { updateHistory, createHistory } from '../api'
+import QualityPreflightPanel from '../components/outline/QualityPreflightPanel.vue'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -135,6 +138,11 @@ const goBack = () => {
 }
 
 const startGeneration = async () => {
+  if (!store.quality || store.quality.decision !== 'approve') {
+    alert('请先完成质量评分，并确保评分结果为“可以进入图片生成”。')
+    return
+  }
+
   // 如果有待保存的内容，先强制保存
   if (saveTimer !== null) {
     clearTimeout(saveTimer)
