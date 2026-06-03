@@ -35,6 +35,10 @@ from backend.services.xhs_quality_eval import (
     write_jsonl_report,
     write_markdown_report,
 )
+from backend.services.xhs_quality_history import (
+    summarize_loop_history,
+    write_loop_history_markdown,
+)
 from backend.services.xhs_quality_loop import run_quality_loop
 from backend.services.xhs_re_evaluation import (
     apply_improvement_gate,
@@ -1618,6 +1622,41 @@ def test_quality_loop_replay_index_keeps_distinct_run_reports(tmp_path):
     assert second_payload["paths"]["run_report"].exists()
 
 
+def test_quality_loop_history_summarizes_replay_index_with_reports(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_history_001",
+        min_overall=95,
+    )
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_history_002",
+        min_overall=95,
+    )
+
+    summary = summarize_loop_history(index_path)
+    markdown_path = tmp_path / "history.md"
+    write_loop_history_markdown(summary, markdown_path)
+
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert summary["schema_version"] == "xhs_quality_loop_history.v1"
+    assert summary["run_count"] == 2
+    assert summary["latest_run_id"] == "loop_history_002"
+    assert summary["runs"][0]["run_id"] == "loop_history_001"
+    assert summary["runs"][1]["quality_examples_delta"] == 0
+    assert summary["runs"][1]["report_exists"] is True
+    assert summary["totals"]["quality_examples_count"] == 10
+    assert "| loop_history_002 |" in markdown
+    assert "xhs_quality_loop_history.v1" in markdown
+
+
 def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
     report_dir = tmp_path / "loop_reports"
 
@@ -1682,6 +1721,40 @@ def test_quality_loop_cli_writes_replay_index(tmp_path):
     assert payload["paths"]["run_report"].endswith("xhs-quality-loop-run.json")
     assert index_rows[-1]["run_id"] == "loop_index_cli_001"
     assert index_rows[-1]["run_report"] == payload["paths"]["run_report"]
+
+
+def test_quality_loop_history_cli_writes_markdown(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    markdown_path = tmp_path / "history.md"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_history_cli_001",
+        min_overall=95,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/summarize_xhs_quality_loop.py",
+            "--replay-index",
+            str(index_path),
+            "--markdown",
+            str(markdown_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert payload["summary"]["run_count"] == 1
+    assert payload["markdown"] == str(markdown_path)
+    assert "loop_history_cli_001" in markdown
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):

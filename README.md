@@ -254,6 +254,12 @@ reports/xhs-quality-loop/runs/<run>/xhs-quality-loop-run.json
 reports/xhs-quality-loop/xhs-quality-loop-index.jsonl
 ```
 
+Summarize replay history across loop runs:
+
+```bash
+make summarize-loop
+```
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

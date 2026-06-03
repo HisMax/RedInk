@@ -266,6 +266,12 @@ reports/xhs-quality-loop/runs/<run>/xhs-quality-loop-run.json
 reports/xhs-quality-loop/xhs-quality-loop-index.jsonl
 ```
 
+汇总多次闭环的运行历史：
+
+```bash
+make summarize-loop
+```
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash

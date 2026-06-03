@@ -50,6 +50,9 @@ LOOP_PROMPT_EXAMPLES_LIMIT ?= 3
 LOOP_LIVE_CONTENT ?= 0
 LOOP_LIVE_REVISION ?= 0
 LOOP_LIVE_REEVAL ?= 0
+LOOP_HISTORY_INDEX ?= $(LOOP_REPLAY_INDEX)
+LOOP_HISTORY_MARKDOWN ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-history.md
+LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -140,7 +143,13 @@ ifeq ($(LOOP_LIVE_REEVAL),1)
 LOOP_ARGS += --live-re-evaluation
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop test-quality
+LOOP_HISTORY_ARGS := --replay-index "$(LOOP_HISTORY_INDEX)" --markdown "$(LOOP_HISTORY_MARKDOWN)"
+
+ifneq ($(strip $(LOOP_HISTORY_LIMIT)),)
+LOOP_HISTORY_ARGS += --limit "$(LOOP_HISTORY_LIMIT)"
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -161,6 +170,10 @@ re-eval-revisions:
 xhs-quality-loop:
 	@mkdir -p "$(LOOP_REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_quality_loop.py $(LOOP_ARGS)
+
+summarize-loop:
+	@mkdir -p "$(LOOP_REPORT_DIR)"
+	@$(PYTHON) scripts/summarize_xhs_quality_loop.py $(LOOP_HISTORY_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q
