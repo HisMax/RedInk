@@ -5,11 +5,13 @@ Summaries for Xiaohongshu quality loop replay history.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 
 SCHEMA_VERSION = "xhs_quality_loop_history.v1"
+DIAGNOSTICS_SCHEMA_VERSION = "xhs_quality_loop_diagnostics.v1"
 
 
 def load_loop_replay_index(path: str | Path) -> List[Dict[str, Any]]:
@@ -38,13 +40,32 @@ def summarize_loop_history(
 
     runs = _summarize_runs(rows, include_reports=include_reports)
     latest = runs[-1] if runs else {}
-    return {
+    summary = {
         "schema_version": SCHEMA_VERSION,
         "index_path": str(index_path),
         "run_count": len(runs),
         "latest_run_id": latest.get("run_id"),
         "totals": _totals(runs),
         "runs": runs,
+    }
+    summary["diagnostics"] = diagnose_loop_history(summary)
+    return summary
+
+
+def diagnose_loop_history(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Build prioritized diagnostic issue groups from a loop history summary."""
+    runs = list(summary.get("runs") or [])
+    issue_groups = []
+    issue_groups.extend(_missing_report_issues(runs))
+    issue_groups.extend(_baseline_issues(runs))
+    issue_groups.extend(_re_evaluation_issues(runs))
+    issue_groups.extend(_quality_example_issues(runs))
+    issue_groups.sort(key=lambda issue: (issue["priority"], issue["issue_id"]))
+    return {
+        "schema_version": DIAGNOSTICS_SCHEMA_VERSION,
+        "issue_count": len(issue_groups),
+        "issue_groups": issue_groups,
+        "next_actions": _next_actions(issue_groups),
     }
 
 
@@ -69,6 +90,7 @@ def _summarize_runs(
         metrics = _merge_metrics(row, report)
         quality_examples_count = _int(metrics.get("quality_examples_count"))
         baseline_failed_count = _int(metrics.get("baseline_failed_count"))
+        baseline_reasons = _baseline_failure_reasons(report)
         run = {
             "run_id": row.get("run_id"),
             "created_at": row.get("created_at"),
@@ -80,10 +102,12 @@ def _summarize_runs(
             "revision_request_count": _int(metrics.get("revision_request_count")),
             "re_evaluation_candidate_count": _int(metrics.get("re_evaluation_candidate_count")),
             "re_evaluation_improved_count": _optional_int(metrics.get("re_evaluation_improved_count")),
+            "re_evaluation_failure_count": _re_evaluation_failure_count(report),
             "case_library_record_count": _optional_int(metrics.get("case_library_record_count")),
             "manual_examples_count": _optional_int(metrics.get("manual_examples_count")),
             "quality_examples_count": quality_examples_count,
             "quality_examples_delta": _delta(quality_examples_count, previous_quality_examples),
+            "baseline_failure_reasons": baseline_reasons,
             "replay_command": _replay_command(report),
         }
         previous_quality_examples = quality_examples_count
@@ -107,6 +131,160 @@ def _merge_metrics(row: Dict[str, Any], report: Optional[Dict[str, Any]]) -> Dic
         if row.get(key) is not None:
             metrics[key] = row.get(key)
     return metrics
+
+
+def _missing_report_issues(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    affected = [run for run in runs if not run.get("report_exists")]
+    if not affected:
+        return []
+    return [_issue(
+        issue_id="missing_run_report",
+        severity="high",
+        priority=1,
+        count=len(affected),
+        affected_runs=affected,
+        evidence=[f"{len(affected)} run reports are missing from replay index references."],
+        recommendation="恢复或重跑缺失的 run report，保证索引里的回放入口可以追溯。",
+        action="恢复或重跑缺失的 run report，然后重新执行 make summarize-loop。",
+    )]
+
+
+def _baseline_issues(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    affected = [run for run in runs if _int(run.get("baseline_failed_count")) > 0]
+    if not affected:
+        return []
+
+    reason_counts = Counter()
+    for run in affected:
+        for reason, count in (run.get("baseline_failure_reasons") or {}).items():
+            reason_counts[reason] += count
+    issue_id = reason_counts.most_common(1)[0][0] if reason_counts else "baseline_gate_failed"
+    latest = affected[-1]
+    latest_failed = _int(latest.get("baseline_failed_count"))
+    latest_cases = _int(latest.get("evaluation_case_count"))
+    failure_rate = latest_failed / latest_cases if latest_cases else 0
+    return [_issue(
+        issue_id=issue_id,
+        severity="high" if failure_rate >= 0.5 else "medium",
+        priority=1 if failure_rate >= 0.5 else 2,
+        count=sum(_int(run.get("baseline_failed_count")) for run in affected),
+        affected_runs=affected,
+        evidence=[
+            f"{len(affected)} runs have baseline failures.",
+            f"Latest run failed {latest_failed}/{latest_cases} cases.",
+        ],
+        recommendation="优先加强首轮内容生成的结构、标题钩子和可执行信息密度，降低进入改稿环节的比例。",
+        action="复盘 baseline 失败样本，把高频问题补进生成 prompt 和优质样本库。",
+    )]
+
+
+def _re_evaluation_issues(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    affected = [run for run in runs if _int(run.get("re_evaluation_failure_count")) > 0]
+    if not affected:
+        return []
+    return [_issue(
+        issue_id="re_evaluation_not_improved",
+        severity="high",
+        priority=2,
+        count=sum(_int(run.get("re_evaluation_failure_count")) for run in affected),
+        affected_runs=affected,
+        evidence=[f"{len(affected)} runs have revised cases that did not improve enough."],
+        recommendation="收紧改稿指令，要求 revision 明确解决 baseline 失败原因，并输出可验证的修改摘要。",
+        action="抽样复盘未提升改稿结果，更新 revision prompt 的改写约束。",
+    )]
+
+
+def _quality_example_issues(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not runs:
+        return []
+    issues = []
+    latest = runs[-1]
+    if _int(latest.get("quality_examples_count")) == 0:
+        issues.append(_issue(
+            issue_id="quality_examples_missing",
+            severity="high",
+            priority=2,
+            count=1,
+            affected_runs=[latest],
+            evidence=["Latest run exported 0 verified quality examples."],
+            recommendation="先保证至少产出一批可复用的优质样本，再进入 live 扩量生成。",
+            action="降低样本导出门槛或补充人工优质样本，重新生成 prompt examples。",
+        ))
+
+    declined = [run for run in runs if (run.get("quality_examples_delta") or 0) < 0]
+    if declined:
+        issues.append(_issue(
+            issue_id="quality_examples_declined",
+            severity="medium",
+            priority=3,
+            count=len(declined),
+            affected_runs=declined,
+            evidence=[f"{len(declined)} runs exported fewer quality examples than the previous run."],
+            recommendation="对比下滑 run 的评测门禁和输入案例，确认是否门槛变严或内容质量退化。",
+            action="用 replay command 重放下滑 run，并对比前一轮报告。",
+        ))
+    return issues
+
+
+def _issue(
+    *,
+    issue_id: str,
+    severity: str,
+    priority: int,
+    count: int,
+    affected_runs: List[Dict[str, Any]],
+    evidence: List[str],
+    recommendation: str,
+    action: str,
+) -> Dict[str, Any]:
+    return {
+        "issue_id": issue_id,
+        "severity": severity,
+        "priority": priority,
+        "count": count,
+        "affected_run_ids": [run.get("run_id") for run in affected_runs if run.get("run_id")],
+        "evidence": evidence,
+        "recommendation": recommendation,
+        "action": action,
+    }
+
+
+def _next_actions(issue_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "priority": issue["priority"],
+            "issue_id": issue["issue_id"],
+            "action": issue["action"],
+        }
+        for issue in issue_groups[:5]
+    ]
+
+
+def _baseline_failure_reasons(report: Optional[Dict[str, Any]]) -> Dict[str, int]:
+    if not report:
+        return {}
+    failures = ((report.get("gates") or {}).get("baseline") or {}).get("failures") or []
+    reasons = Counter()
+    for failure in failures:
+        reasons[_normalize_baseline_reason(failure.get("reason"))] += 1
+    return dict(reasons)
+
+
+def _normalize_baseline_reason(reason: Any) -> str:
+    text = str(reason or "").lower()
+    if "overall" in text and "below" in text:
+        return "baseline_overall_below_threshold"
+    if "decision" in text:
+        return "baseline_decision_not_allowed"
+    return "baseline_gate_failed"
+
+
+def _re_evaluation_failure_count(report: Optional[Dict[str, Any]]) -> int:
+    if not report:
+        return 0
+    comparison = ((report.get("gates") or {}).get("re_evaluation") or {})
+    failures = comparison.get("failures") or []
+    return len(failures)
 
 
 def _load_run_report(path: Any) -> Optional[Dict[str, Any]]:
@@ -154,6 +332,28 @@ def _markdown(summary: Dict[str, Any]) -> str:
                 examples=_display_number(run.get("quality_examples_count")),
                 delta=_display_delta(run.get("quality_examples_delta")),
                 report=_display_report(run),
+            )
+        )
+    diagnostics = summary.get("diagnostics") or {}
+    lines.extend([
+        "",
+        "## Diagnostics",
+        "",
+        f"- Schema: `{diagnostics.get('schema_version') or ''}`",
+        f"- Issues: {diagnostics.get('issue_count', 0)}",
+        "",
+        "| Priority | Severity | Issue | Count | Affected Runs | Recommendation |",
+        "| ---: | --- | --- | ---: | --- | --- |",
+    ])
+    for issue in diagnostics.get("issue_groups") or []:
+        lines.append(
+            "| {priority} | {severity} | {issue_id} | {count} | {runs} | {recommendation} |".format(
+                priority=issue.get("priority"),
+                severity=issue.get("severity") or "",
+                issue_id=issue.get("issue_id") or "",
+                count=_display_number(issue.get("count")),
+                runs=", ".join(issue.get("affected_run_ids") or []),
+                recommendation=issue.get("recommendation") or "",
             )
         )
     lines.append("")

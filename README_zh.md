@@ -272,6 +272,8 @@ reports/xhs-quality-loop/xhs-quality-loop-index.jsonl
 make summarize-loop
 ```
 
+历史报告会包含 baseline 失败、缺失运行报告、再评测回退、优质样本产出等优先级诊断和建议动作。
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash

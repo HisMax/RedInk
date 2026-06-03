@@ -1653,8 +1653,44 @@ def test_quality_loop_history_summarizes_replay_index_with_reports(tmp_path):
     assert summary["runs"][1]["quality_examples_delta"] == 0
     assert summary["runs"][1]["report_exists"] is True
     assert summary["totals"]["quality_examples_count"] == 10
+    assert summary["diagnostics"]["schema_version"] == "xhs_quality_loop_diagnostics.v1"
+    assert summary["diagnostics"]["issue_groups"][0]["issue_id"] == "baseline_overall_below_threshold"
+    assert summary["diagnostics"]["issue_groups"][0]["priority"] == 1
+    assert summary["diagnostics"]["issue_groups"][0]["affected_run_ids"] == [
+        "loop_history_001",
+        "loop_history_002",
+    ]
+    assert summary["diagnostics"]["next_actions"][0]["issue_id"] == "baseline_overall_below_threshold"
     assert "| loop_history_002 |" in markdown
+    assert "## Diagnostics" in markdown
+    assert "baseline_overall_below_threshold" in markdown
     assert "xhs_quality_loop_history.v1" in markdown
+
+
+def test_quality_loop_history_diagnoses_missing_run_report(tmp_path):
+    index_path = tmp_path / "loop-index.jsonl"
+    missing_report = tmp_path / "missing-run-report.json"
+    index_path.write_text(
+        json.dumps({
+            "schema_version": "xhs_quality_loop_index.v1",
+            "run_id": "missing_report_001",
+            "created_at": "2026-06-03T17:00:00Z",
+            "run_report": str(missing_report),
+            "evaluation_case_count": 5,
+            "baseline_failed_count": 0,
+            "revision_request_count": 0,
+            "re_evaluation_candidate_count": 0,
+            "quality_examples_count": 0,
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = summarize_loop_history(index_path)
+
+    assert summary["runs"][0]["report_exists"] is False
+    assert summary["diagnostics"]["issue_groups"][0]["issue_id"] == "missing_run_report"
+    assert summary["diagnostics"]["issue_groups"][0]["severity"] == "high"
+    assert summary["diagnostics"]["next_actions"][0]["action"].startswith("恢复或重跑")
 
 
 def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
@@ -1753,7 +1789,9 @@ def test_quality_loop_history_cli_writes_markdown(tmp_path):
     payload = json.loads(completed.stdout)
     markdown = markdown_path.read_text(encoding="utf-8")
     assert payload["summary"]["run_count"] == 1
+    assert payload["summary"]["diagnostics"]["issue_groups"][0]["issue_id"] == "baseline_overall_below_threshold"
     assert payload["markdown"] == str(markdown_path)
+    assert "## Diagnostics" in markdown
     assert "loop_history_cli_001" in markdown
 
 
