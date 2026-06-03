@@ -307,7 +307,7 @@ make promote-eval-cases
 make promote-eval-cases LOOP_PROMOTE_APPROVED=1
 ```
 
-用晋级后的 versioned 评测集运行单次评测或完整闭环：
+直接指定晋级后的 versioned 评测集运行单次评测或完整闭环：
 
 ```bash
 make eval-quality EVAL_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
@@ -328,6 +328,19 @@ reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
 ```
 
 `make summarize-loop` 会读取 A/B index，并在历史报告中加入 eval set 版本看板，展示增量 case 表现和回退风险。
+
+只有 A/B 和历史看板门禁都显示低风险后，才把候选评测集标记为当前推荐集：
+
+```bash
+make recommend-eval-cases LOOP_MARK_RECOMMENDED=1
+```
+
+后续可直接消费推荐评测集，不需要手动复制候选路径：
+
+```bash
+make eval-quality-recommended
+make xhs-quality-loop-recommended
+```
 
 服务商配置就绪后，可以逐步打开 live 服务：
 

@@ -295,7 +295,7 @@ Write the new version file without overwriting the base fixture:
 make promote-eval-cases LOOP_PROMOTE_APPROVED=1
 ```
 
-Run evaluation or the full loop against a promoted versioned case set:
+Run evaluation or the full loop against a promoted versioned case set directly:
 
 ```bash
 make eval-quality EVAL_CASES=reports/xhs-quality-loop/xhs-quality-cases.next.json
@@ -316,6 +316,20 @@ reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
 ```
 
 `make summarize-loop` reads the A/B index and adds an eval set version dashboard with added-case performance and regression risk.
+
+Mark the candidate as the current recommended eval set only after A/B and the
+history dashboard gate are low risk:
+
+```bash
+make recommend-eval-cases LOOP_MARK_RECOMMENDED=1
+```
+
+Use the recommended eval set without manually copying the candidate path:
+
+```bash
+make eval-quality-recommended
+make xhs-quality-loop-recommended
+```
 
 Enable live services step by step when your provider config is ready:
 

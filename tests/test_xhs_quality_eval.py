@@ -240,6 +240,24 @@ def _write_ab_index_row(
     )
 
 
+def _write_recommended_manifest(
+    path,
+    *,
+    candidate_path,
+    gate=None,
+    version_id="xhs_quality_cases_v2",
+):
+    path.write_text(
+        json.dumps({
+            "schema_version": "xhs_recommended_eval_set.v1",
+            "version_id": version_id,
+            "candidate_cases": str(candidate_path),
+            "gate": gate or {"eligible": True, "status": "passed", "reasons": []},
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_load_quality_cases_reads_fixture():
     cases = load_quality_cases("tests/fixtures/xhs_quality_cases.json")
 
@@ -2595,6 +2613,144 @@ def test_make_recommend_eval_cases_writes_manifest(tmp_path):
     assert payload["written"] is True
     assert payload["version_id"] == "xhs_quality_cases_make_v2"
     assert manifest_path.exists() is True
+
+
+def test_make_eval_quality_recommended_uses_manifest_cases(tmp_path):
+    candidate_path = _versioned_quality_cases_path(
+        tmp_path,
+        version_id="xhs_quality_cases_make_recommended_v2",
+    )
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    report_dir = tmp_path / "reports"
+    _write_recommended_manifest(
+        manifest_path,
+        candidate_path=candidate_path,
+        version_id="xhs_quality_cases_make_recommended_v2",
+    )
+
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality-recommended",
+            f"REPORT_DIR={report_dir}",
+            f"PYTHON={sys.executable}",
+            f"LOOP_RECOMMENDED_CASES={manifest_path}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["case_count"] == 2
+    assert payload["case_set"]["version_id"] == "xhs_quality_cases_make_recommended_v2"
+    assert (report_dir / "xhs-quality-eval.jsonl").exists()
+
+
+def test_make_xhs_quality_loop_recommended_uses_manifest_cases(tmp_path):
+    candidate_path = _versioned_quality_cases_path(
+        tmp_path,
+        version_id="xhs_quality_cases_loop_recommended_v2",
+    )
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    report_dir = tmp_path / "loop-reports"
+    case_library_path = tmp_path / "content-cases.jsonl"
+    replay_index_path = tmp_path / "xhs-quality-loop-index.jsonl"
+    _write_recommended_manifest(
+        manifest_path,
+        candidate_path=candidate_path,
+        version_id="xhs_quality_cases_loop_recommended_v2",
+    )
+
+    completed = subprocess.run(
+        [
+            "make",
+            "xhs-quality-loop-recommended",
+            f"PYTHON={sys.executable}",
+            f"LOOP_REPORT_DIR={report_dir}",
+            f"LOOP_CASE_LIBRARY={case_library_path}",
+            f"LOOP_REPLAY_INDEX={replay_index_path}",
+            f"LOOP_RECOMMENDED_CASES={manifest_path}",
+            "LOOP_LIMIT=1",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["case_set"]["version_id"] == "xhs_quality_cases_loop_recommended_v2"
+    assert payload["evaluation"]["case_count"] == 2
+    assert replay_index_path.exists()
+
+
+def test_resolve_recommended_eval_set_cli_prints_candidate_cases(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_recommended_manifest(manifest_path, candidate_path=candidate_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/resolve_xhs_recommended_eval_set.py",
+            "--recommended-manifest",
+            str(manifest_path),
+            "--print-cases",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.stdout.strip() == str(candidate_path)
+
+
+def test_resolve_recommended_eval_set_cli_rejects_blocked_gate(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_recommended_manifest(
+        manifest_path,
+        candidate_path=candidate_path,
+        gate={"eligible": False, "status": "blocked", "reasons": ["risk level is high"]},
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/resolve_xhs_recommended_eval_set.py",
+            "--recommended-manifest",
+            str(manifest_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 1
+    assert payload["resolved"] is False
+    assert "recommended manifest gate is not passed" in payload["reasons"]
+
+
+def test_resolve_recommended_eval_set_cli_rejects_missing_candidate_file(tmp_path):
+    candidate_path = tmp_path / "missing-xhs-quality-cases.next.json"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_recommended_manifest(manifest_path, candidate_path=candidate_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/resolve_xhs_recommended_eval_set.py",
+            "--recommended-manifest",
+            str(manifest_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 1
+    assert payload["resolved"] is False
+    assert "recommended candidate cases file does not exist" in payload["reasons"]
 
 
 def test_quality_ab_cli_compares_base_and_versioned_candidate(tmp_path):

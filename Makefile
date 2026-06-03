@@ -78,30 +78,32 @@ AB_REPORT_ONLY ?= 0
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
-EVAL_ARGS := --cases "$(EVAL_CASES)" --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
-EVAL_ARGS += --run-id "$(EVAL_RUN_ID)"
-EVAL_ARGS += --min-overall "$(EVAL_MIN_OVERALL)"
-EVAL_ARGS += --max-score-drop "$(EVAL_MAX_SCORE_DROP)"
+EVAL_RUN_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
+EVAL_RUN_ARGS += --run-id "$(EVAL_RUN_ID)"
+EVAL_RUN_ARGS += --min-overall "$(EVAL_MIN_OVERALL)"
+EVAL_RUN_ARGS += --max-score-drop "$(EVAL_MAX_SCORE_DROP)"
 
 ifneq ($(strip $(EVAL_CASE_LIBRARY)),)
-EVAL_ARGS += --case-library "$(EVAL_CASE_LIBRARY)"
+EVAL_RUN_ARGS += --case-library "$(EVAL_CASE_LIBRARY)"
 endif
 
 ifneq ($(strip $(EVAL_PREVIOUS)),)
-EVAL_ARGS += --compare-jsonl "$(EVAL_PREVIOUS)"
+EVAL_RUN_ARGS += --compare-jsonl "$(EVAL_PREVIOUS)"
 endif
 
 ifneq ($(strip $(EVAL_PROMPT_EXAMPLES)),)
-EVAL_ARGS += --prompt-examples-jsonl "$(EVAL_PROMPT_EXAMPLES)" --prompt-examples-limit "$(EVAL_PROMPT_EXAMPLES_LIMIT)"
+EVAL_RUN_ARGS += --prompt-examples-jsonl "$(EVAL_PROMPT_EXAMPLES)" --prompt-examples-limit "$(EVAL_PROMPT_EXAMPLES_LIMIT)"
 endif
 
 ifeq ($(EVAL_LIVE),1)
-EVAL_ARGS += --live
+EVAL_RUN_ARGS += --live
 endif
 
 ifeq ($(EVAL_REPORT_ONLY),1)
-EVAL_ARGS += --report-only
+EVAL_RUN_ARGS += --report-only
 endif
+
+EVAL_ARGS := --cases "$(EVAL_CASES)" $(EVAL_RUN_ARGS)
 
 REVISION_ARGS := --library "$(REVISION_LIBRARY)" --requests-jsonl "$(REVISION_REQUESTS)" --run-id "$(REVISION_RUN_ID)"
 
@@ -141,30 +143,32 @@ ifeq ($(REEVAL_REPORT_ONLY),1)
 REEVAL_ARGS += --report-only
 endif
 
-LOOP_ARGS := --cases "$(LOOP_CASES)" --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
-LOOP_ARGS += --replay-index "$(LOOP_REPLAY_INDEX)"
-LOOP_ARGS += --run-id "$(LOOP_RUN_ID)"
-LOOP_ARGS += --min-overall "$(LOOP_MIN_OVERALL)"
-LOOP_ARGS += --min-improvement "$(LOOP_MIN_IMPROVEMENT)"
-LOOP_ARGS += --min-quality-overall "$(LOOP_MIN_QUALITY_OVERALL)"
-LOOP_ARGS += --min-score-delta "$(LOOP_MIN_SCORE_DELTA)"
-LOOP_ARGS += --limit "$(LOOP_LIMIT)"
+LOOP_RUN_ARGS := --report-dir "$(LOOP_REPORT_DIR)" --case-library "$(LOOP_CASE_LIBRARY)"
+LOOP_RUN_ARGS += --replay-index "$(LOOP_REPLAY_INDEX)"
+LOOP_RUN_ARGS += --run-id "$(LOOP_RUN_ID)"
+LOOP_RUN_ARGS += --min-overall "$(LOOP_MIN_OVERALL)"
+LOOP_RUN_ARGS += --min-improvement "$(LOOP_MIN_IMPROVEMENT)"
+LOOP_RUN_ARGS += --min-quality-overall "$(LOOP_MIN_QUALITY_OVERALL)"
+LOOP_RUN_ARGS += --min-score-delta "$(LOOP_MIN_SCORE_DELTA)"
+LOOP_RUN_ARGS += --limit "$(LOOP_LIMIT)"
 
 ifneq ($(strip $(LOOP_PROMPT_EXAMPLES)),)
-LOOP_ARGS += --prompt-examples-jsonl "$(LOOP_PROMPT_EXAMPLES)" --prompt-examples-limit "$(LOOP_PROMPT_EXAMPLES_LIMIT)"
+LOOP_RUN_ARGS += --prompt-examples-jsonl "$(LOOP_PROMPT_EXAMPLES)" --prompt-examples-limit "$(LOOP_PROMPT_EXAMPLES_LIMIT)"
 endif
 
 ifeq ($(LOOP_LIVE_CONTENT),1)
-LOOP_ARGS += --live-content
+LOOP_RUN_ARGS += --live-content
 endif
 
 ifeq ($(LOOP_LIVE_REVISION),1)
-LOOP_ARGS += --live-revision
+LOOP_RUN_ARGS += --live-revision
 endif
 
 ifeq ($(LOOP_LIVE_REEVAL),1)
-LOOP_ARGS += --live-re-evaluation
+LOOP_RUN_ARGS += --live-re-evaluation
 endif
+
+LOOP_ARGS := --cases "$(LOOP_CASES)" $(LOOP_RUN_ARGS)
 
 LOOP_HISTORY_ARGS := --replay-index "$(LOOP_HISTORY_INDEX)" --ab-index "$(LOOP_AB_INDEX)" --markdown "$(LOOP_HISTORY_MARKDOWN)"
 LOOP_HISTORY_ARGS += --improvement-plan-jsonl "$(LOOP_IMPROVEMENT_PLAN)"
@@ -204,6 +208,8 @@ else
 RECOMMEND_EVAL_CASE_ARGS += --dry-run
 endif
 
+RESOLVE_RECOMMENDED_CASES = $(PYTHON) scripts/resolve_xhs_recommended_eval_set.py --recommended-manifest "$(LOOP_RECOMMENDED_CASES)" --print-cases
+
 AB_ARGS := --base-cases "$(AB_BASE_CASES)" --candidate-cases "$(AB_CANDIDATE_CASES)"
 AB_ARGS += --report-dir "$(AB_REPORT_DIR)" --run-id "$(AB_RUN_ID)"
 AB_ARGS += --min-overall "$(AB_MIN_OVERALL)" --max-score-drop "$(AB_MAX_SCORE_DROP)"
@@ -216,11 +222,16 @@ ifeq ($(AB_REPORT_ONLY),1)
 AB_ARGS += --report-only
 endif
 
-.PHONY: eval-quality eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases test-quality
+.PHONY: eval-quality eval-quality-recommended eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop xhs-quality-loop-recommended summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_quality_eval.py $(EVAL_ARGS)
+
+eval-quality-recommended:
+	@mkdir -p "$(REPORT_DIR)"
+	@cases="$$( $(RESOLVE_RECOMMENDED_CASES) )"; \
+	$(PYTHON) scripts/run_xhs_quality_eval.py --cases "$$cases" $(EVAL_RUN_ARGS)
 
 eval-quality-ab:
 	@mkdir -p "$(AB_REPORT_DIR)"
@@ -241,6 +252,11 @@ re-eval-revisions:
 xhs-quality-loop:
 	@mkdir -p "$(LOOP_REPORT_DIR)"
 	@$(PYTHON) scripts/run_xhs_quality_loop.py $(LOOP_ARGS)
+
+xhs-quality-loop-recommended:
+	@mkdir -p "$(LOOP_REPORT_DIR)"
+	@cases="$$( $(RESOLVE_RECOMMENDED_CASES) )"; \
+	$(PYTHON) scripts/run_xhs_quality_loop.py --cases "$$cases" $(LOOP_RUN_ARGS)
 
 summarize-loop:
 	@mkdir -p "$(LOOP_REPORT_DIR)"
