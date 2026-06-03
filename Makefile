@@ -53,6 +53,8 @@ LOOP_LIVE_REEVAL ?= 0
 LOOP_HISTORY_INDEX ?= $(LOOP_REPLAY_INDEX)
 LOOP_HISTORY_MARKDOWN ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-history.md
 LOOP_IMPROVEMENT_PLAN ?= $(LOOP_REPORT_DIR)/xhs-quality-improvement-plan.jsonl
+LOOP_IMPROVEMENT_DRAFT_DIR ?= $(LOOP_REPORT_DIR)/improvement-drafts
+LOOP_IMPROVEMENT_DRAFT_RUN_ID ?= xhs_improvement_drafts
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
@@ -151,7 +153,10 @@ ifneq ($(strip $(LOOP_HISTORY_LIMIT)),)
 LOOP_HISTORY_ARGS += --limit "$(LOOP_HISTORY_LIMIT)"
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop test-quality
+DRAFT_IMPROVEMENT_ARGS := --plan-jsonl "$(LOOP_IMPROVEMENT_PLAN)" --output-dir "$(LOOP_IMPROVEMENT_DRAFT_DIR)"
+DRAFT_IMPROVEMENT_ARGS += --run-id "$(LOOP_IMPROVEMENT_DRAFT_RUN_ID)"
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -176,6 +181,10 @@ xhs-quality-loop:
 summarize-loop:
 	@mkdir -p "$(LOOP_REPORT_DIR)"
 	@$(PYTHON) scripts/summarize_xhs_quality_loop.py $(LOOP_HISTORY_ARGS)
+
+draft-improvements:
+	@mkdir -p "$(LOOP_IMPROVEMENT_DRAFT_DIR)"
+	@$(PYTHON) scripts/draft_xhs_improvements.py $(DRAFT_IMPROVEMENT_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

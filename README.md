@@ -263,6 +263,14 @@ make summarize-loop
 The history report includes prioritized diagnostics for baseline failures, missing run reports, re-evaluation regressions, and quality example output.
 It also exports `xhs-quality-improvement-plan.jsonl`, a proposed task list for prompt, revision, and eval configuration changes.
 
+Draft human-reviewed execution artifacts from the proposed plan:
+
+```bash
+make draft-improvements
+```
+
+This writes prompt patch drafts, eval case drafts, revision prompt drafts, and an execution checklist under `reports/xhs-quality-loop/improvement-drafts`.
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

@@ -40,6 +40,11 @@ from backend.services.xhs_quality_history import (
     write_improvement_plan_jsonl,
     write_loop_history_markdown,
 )
+from backend.services.xhs_improvement_execution import (
+    build_improvement_draft_bundle,
+    load_improvement_tasks,
+    write_improvement_draft_bundle,
+)
 from backend.services.xhs_quality_loop import run_quality_loop
 from backend.services.xhs_re_evaluation import (
     apply_improvement_gate,
@@ -1731,6 +1736,45 @@ def test_quality_loop_improvement_plan_writes_jsonl(tmp_path):
     assert tasks[0]["affected_run_ids"] == ["loop_plan_001"]
 
 
+def test_quality_improvement_drafts_build_prompt_and_eval_artifacts(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    plan_path = tmp_path / "improvement-plan.jsonl"
+    draft_dir = tmp_path / "drafts"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_draft_001",
+        min_overall=95,
+    )
+    summary = summarize_loop_history(index_path)
+    write_improvement_plan_jsonl(summary["improvement_plan"], plan_path)
+
+    tasks = load_improvement_tasks(plan_path)
+    bundle = build_improvement_draft_bundle(tasks, run_id="draft_unit_001")
+    paths = write_improvement_draft_bundle(bundle, draft_dir)
+
+    prompt_text = paths["prompt_patch_drafts"].read_text(encoding="utf-8")
+    eval_rows = [
+        json.loads(line)
+        for line in paths["eval_case_drafts"].read_text(encoding="utf-8").splitlines()
+    ]
+    checklist = paths["execution_checklist"].read_text(encoding="utf-8")
+    assert bundle["schema_version"] == "xhs_quality_improvement_draft_bundle.v1"
+    assert bundle["requires_human_approval"] is True
+    assert bundle["task_count"] == 2
+    assert bundle["draft_counts"]["prompt_patch_drafts"] == 1
+    assert bundle["draft_counts"]["eval_case_drafts"] == 1
+    assert "prompt_baseline_overall_below_threshold" in prompt_text
+    assert "标题钩子" in prompt_text
+    assert eval_rows[0]["schema_version"] == "xhs_eval_case_draft.v1"
+    assert eval_rows[0]["source_task_id"] == "eval_baseline_overall_below_threshold"
+    assert eval_rows[0]["status"] == "draft"
+    assert "人工确认" in checklist
+
+
 def test_quality_loop_cli_runs_dry_run_end_to_end(tmp_path):
     report_dir = tmp_path / "loop_reports"
 
@@ -1841,6 +1885,47 @@ def test_quality_loop_history_cli_writes_markdown(tmp_path):
     assert "## Diagnostics" in markdown
     assert "## Improvement Plan" in markdown
     assert "loop_history_cli_001" in markdown
+
+
+def test_quality_improvement_drafts_cli_writes_draft_bundle(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    plan_path = tmp_path / "improvement-plan.jsonl"
+    draft_dir = tmp_path / "drafts"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_draft_cli_001",
+        min_overall=95,
+    )
+    summary = summarize_loop_history(index_path)
+    write_improvement_plan_jsonl(summary["improvement_plan"], plan_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/draft_xhs_improvements.py",
+            "--plan-jsonl",
+            str(plan_path),
+            "--output-dir",
+            str(draft_dir),
+            "--run-id",
+            "draft_cli_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["draft_bundle"]["run_id"] == "draft_cli_001"
+    assert payload["draft_bundle"]["task_count"] == 2
+    assert payload["paths"]["manifest"].endswith("xhs-improvement-draft-manifest.json")
+    assert (draft_dir / "xhs-prompt-patch-drafts.md").exists()
+    assert (draft_dir / "xhs-eval-case-drafts.jsonl").exists()
+    assert (draft_dir / "xhs-improvement-execution-checklist.md").exists()
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):
