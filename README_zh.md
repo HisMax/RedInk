@@ -265,6 +265,18 @@ make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LI
 make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_APPLY_RESULTS=reports/xhs-revision-results.jsonl REVISION_APPEND_CASES=1
 ```
 
+对派生改稿案例进行再评测，并和源案例分数对比：
+
+```bash
+make re-eval-revisions REEVAL_LIBRARY=reports/xhs-content-cases.jsonl
+```
+
+将再评测分数写回案例库：
+
+```bash
+make re-eval-revisions REEVAL_LIBRARY=reports/xhs-content-cases.jsonl REEVAL_UPDATE_LIBRARY=1
+```
+
 ---
 
 ## 🔧 配置说明

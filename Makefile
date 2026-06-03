@@ -22,6 +22,15 @@ REVISION_LIVE ?= 0
 REVISION_APPLY_RESULTS ?=
 REVISION_APPEND_CASES ?= 0
 REVISION_REVISED_LIBRARY ?= $(REVISION_LIBRARY)
+REEVAL_LIBRARY ?= $(CASE_LIBRARY)
+REEVAL_JSONL ?= $(REPORT_DIR)/xhs-re-evaluation.jsonl
+REEVAL_MARKDOWN ?= $(REPORT_DIR)/xhs-re-evaluation.md
+REEVAL_RUN_ID ?= xhs_re_evaluation
+REEVAL_LIMIT ?=
+REEVAL_MIN_IMPROVEMENT ?= 0
+REEVAL_LIVE ?= 0
+REEVAL_UPDATE_LIBRARY ?= 0
+REEVAL_REPORT_ONLY ?= 0
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -63,7 +72,27 @@ ifeq ($(REVISION_APPEND_CASES),1)
 REVISION_ARGS += --append-revised-cases --revised-case-library "$(REVISION_REVISED_LIBRARY)"
 endif
 
-.PHONY: eval-quality summarize-cases plan-revisions test-quality
+REEVAL_ARGS := --library "$(REEVAL_LIBRARY)" --jsonl "$(REEVAL_JSONL)" --markdown "$(REEVAL_MARKDOWN)"
+REEVAL_ARGS += --run-id "$(REEVAL_RUN_ID)"
+REEVAL_ARGS += --min-improvement "$(REEVAL_MIN_IMPROVEMENT)"
+
+ifneq ($(strip $(REEVAL_LIMIT)),)
+REEVAL_ARGS += --limit "$(REEVAL_LIMIT)"
+endif
+
+ifeq ($(REEVAL_LIVE),1)
+REEVAL_ARGS += --live
+endif
+
+ifeq ($(REEVAL_UPDATE_LIBRARY),1)
+REEVAL_ARGS += --update-case-library
+endif
+
+ifeq ($(REEVAL_REPORT_ONLY),1)
+REEVAL_ARGS += --report-only
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -76,6 +105,10 @@ summarize-cases:
 plan-revisions:
 	@mkdir -p "$(REPORT_DIR)"
 	@$(PYTHON) scripts/plan_xhs_revisions.py $(REVISION_ARGS)
+
+re-eval-revisions:
+	@mkdir -p "$(REPORT_DIR)"
+	@$(PYTHON) scripts/run_xhs_re_evaluation.py $(REEVAL_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

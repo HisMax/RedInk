@@ -33,6 +33,11 @@ from backend.services.xhs_quality_eval import (
     write_jsonl_report,
     write_markdown_report,
 )
+from backend.services.xhs_re_evaluation import (
+    apply_improvement_gate,
+    apply_re_evaluation_results_to_case_library,
+    run_re_evaluation,
+)
 
 
 class FakeContentService:
@@ -89,6 +94,31 @@ class FakeRevisionService:
                 "tags": ["改后标签"],
                 "revision_summary": ["强化开头钩子"],
             },
+        }
+
+
+class FakeReEvaluationQualityService:
+    def __init__(self):
+        self.calls = []
+
+    def evaluate_content(self, topic, outline, titles, copywriting, tags):
+        self.calls.append({
+            "topic": topic,
+            "outline": outline,
+            "titles": titles,
+            "copywriting": copywriting,
+            "tags": tags,
+        })
+        return {
+            "success": True,
+            "trace_id": "xhs_reeval_trace",
+            "quality_score": {
+                "overall": 86,
+                "decision": "approve",
+                "issues": [],
+                "suggestions": ["保留改稿后的具体参数"],
+            },
+            "publish_gate": {"enabled": False},
         }
 
 
@@ -772,6 +802,157 @@ def test_revision_loop_applies_revised_records_without_duplicates():
     assert updated_twice[-1]["created_at"] == "2026-06-04T14:00:00Z"
 
 
+def test_re_evaluation_runs_pending_revised_cases_and_compares_source_score():
+    source_records = build_case_records(
+        [
+            {
+                "case_id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "trace_id": "quality_trace_1",
+                "titles": ["原标题"],
+                "copywriting": "原正文",
+                "tags": ["咖啡"],
+                "overall": 79,
+                "decision": "revise",
+                "issues_count": 1,
+                "suggestions_count": 2,
+                "baseline_passed": False,
+                "baseline_reason": "overall 79 below 80",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            }
+        ],
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    revised_records = build_revised_case_records(
+        source_records,
+        [
+            {
+                "request_id": "revision_001:eval_001:coffee_beginner",
+                "source_record_id": "eval_001:coffee_beginner",
+                "success": True,
+                "trace_id": "revision_trace_1",
+                "revision": {
+                    "titles": ["改后标题"],
+                    "copywriting": "改后正文",
+                    "tags": ["改后标签"],
+                    "revision_summary": ["强化开头钩子"],
+                },
+            }
+        ],
+        run_id="revision_001",
+        created_at="2026-06-04T13:00:00Z",
+    )
+    service = FakeReEvaluationQualityService()
+
+    results = run_re_evaluation(
+        source_records + revised_records,
+        live=True,
+        quality_service=service,
+        run_id="reeval_001",
+        evaluated_at="2026-06-04T15:00:00Z",
+    )
+    results, comparison = apply_improvement_gate(results, min_improvement=0)
+
+    assert len(service.calls) == 1
+    assert service.calls[0]["topic"] == "新手如何学会手冲咖啡"
+    assert "源记录：eval_001:coffee_beginner" in service.calls[0]["outline"]
+    assert results[0]["schema_version"] == "xhs_re_evaluation_result.v1"
+    assert results[0]["record_id"] == "revision_001:eval_001:coffee_beginner:revised"
+    assert results[0]["source_record_id"] == "eval_001:coffee_beginner"
+    assert results[0]["previous_overall"] == 79
+    assert results[0]["overall"] == 86
+    assert results[0]["score_delta"] == 7
+    assert results[0]["improvement_passed"] is True
+    assert comparison["passed"] is True
+    assert comparison["improved_count"] == 1
+
+
+def test_re_evaluation_applies_results_to_case_library_records():
+    source_records = build_case_records(
+        [
+            {
+                "case_id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "trace_id": "quality_trace_1",
+                "titles": ["原标题"],
+                "copywriting": "原正文",
+                "tags": ["咖啡"],
+                "overall": 79,
+                "decision": "revise",
+                "issues_count": 1,
+                "suggestions_count": 2,
+                "baseline_passed": False,
+                "baseline_reason": "overall 79 below 80",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            }
+        ],
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    revised_records = build_revised_case_records(
+        source_records,
+        [
+            {
+                "request_id": "revision_001:eval_001:coffee_beginner",
+                "source_record_id": "eval_001:coffee_beginner",
+                "success": True,
+                "trace_id": "revision_trace_1",
+                "revision": {
+                    "titles": ["改后标题"],
+                    "copywriting": "改后正文",
+                    "tags": ["改后标签"],
+                    "revision_summary": ["强化开头钩子"],
+                },
+            }
+        ],
+        run_id="revision_001",
+        created_at="2026-06-04T13:00:00Z",
+    )
+    results = [
+        {
+            "schema_version": "xhs_re_evaluation_result.v1",
+            "record_id": "revision_001:eval_001:coffee_beginner:revised",
+            "source_record_id": "eval_001:coffee_beginner",
+            "run_id": "reeval_001",
+            "evaluated_at": "2026-06-04T15:00:00Z",
+            "trace_id": "xhs_reeval_trace",
+            "overall": 86,
+            "decision": "approve",
+            "issues_count": 0,
+            "suggestions_count": 1,
+            "publish_gate_enabled": False,
+            "error": None,
+            "previous_overall": 79,
+            "score_delta": 7,
+            "improvement_passed": True,
+            "improvement_reason": "",
+        }
+    ]
+
+    updated, updated_count = apply_re_evaluation_results_to_case_library(
+        source_records + revised_records,
+        results,
+    )
+
+    assert updated_count == 1
+    revised = updated[-1]
+    assert revised["quality"]["decision"] == "approve"
+    assert revised["quality"]["overall"] == 86
+    assert revised["quality"]["trace_id"] == "xhs_reeval_trace"
+    assert revised["quality"]["baseline_passed"] is True
+    assert revised["revision_meta"]["re_evaluation"]["run_id"] == "reeval_001"
+    assert revised["revision_meta"]["re_evaluation"]["score_delta"] == 7
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -1096,6 +1277,88 @@ def test_revision_plan_cli_applies_revision_results_to_case_library(tmp_path):
     assert len(loaded_results) == 1
     assert records[-1]["record_id"] == "revision_cli_001:eval_cli_001:coffee_beginner:revised"
     assert records[-1]["content"]["copywriting"] == "改后正文"
+
+
+def test_re_evaluation_cli_updates_revised_cases_and_writes_reports(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+    source_records = build_case_records(
+        [
+            {
+                "case_id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "trace_id": "quality_trace_1",
+                "titles": ["原标题"],
+                "copywriting": "原正文",
+                "tags": ["咖啡"],
+                "overall": 79,
+                "decision": "revise",
+                "issues_count": 1,
+                "suggestions_count": 2,
+                "baseline_passed": False,
+                "baseline_reason": "overall 79 below 80",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            }
+        ],
+        run_id="eval_cli_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    revised_records = build_revised_case_records(
+        source_records,
+        [
+            {
+                "request_id": "revision_cli_001:eval_cli_001:coffee_beginner",
+                "source_record_id": "eval_cli_001:coffee_beginner",
+                "success": True,
+                "trace_id": "revision_trace_1",
+                "revision": {
+                    "titles": ["改后标题"],
+                    "copywriting": "改后正文",
+                    "tags": ["改后标签"],
+                    "revision_summary": ["强化开头钩子"],
+                },
+            }
+        ],
+        run_id="revision_cli_001",
+        created_at="2026-06-04T13:00:00Z",
+    )
+    save_case_records(source_records + revised_records, library_path)
+    jsonl_path = tmp_path / "re_eval.jsonl"
+    markdown_path = tmp_path / "re_eval.md"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_re_evaluation.py",
+            "--library",
+            str(library_path),
+            "--jsonl",
+            str(jsonl_path),
+            "--markdown",
+            str(markdown_path),
+            "--run-id",
+            "reeval_cli_001",
+            "--update-case-library",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    records = load_case_records(library_path)
+    jsonl_rows = [json.loads(line) for line in jsonl_path.read_text(encoding="utf-8").splitlines()]
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert payload["candidate_count"] == 1
+    assert payload["comparison"]["passed"] is True
+    assert payload["case_library"]["updated_count"] == 1
+    assert records[-1]["quality"]["decision"] == "approve"
+    assert records[-1]["revision_meta"]["re_evaluation"]["run_id"] == "reeval_cli_001"
+    assert jsonl_rows[0]["schema_version"] == "xhs_re_evaluation_result.v1"
+    assert "| revision_cli_001:eval_cli_001:coffee_beginner:revised |" in markdown
 
 
 def test_cli_exits_nonzero_when_baseline_fails():

@@ -253,6 +253,18 @@ Apply a saved revision result file to the case library without another live call
 make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_APPLY_RESULTS=reports/xhs-revision-results.jsonl REVISION_APPEND_CASES=1
 ```
 
+Re-evaluate derived revised cases and compare them with their source scores:
+
+```bash
+make re-eval-revisions REEVAL_LIBRARY=reports/xhs-content-cases.jsonl
+```
+
+Write re-evaluation scores back to the case library:
+
+```bash
+make re-eval-revisions REEVAL_LIBRARY=reports/xhs-content-cases.jsonl REEVAL_UPDATE_LIBRARY=1
+```
+
 ---
 
 ## 🔧 Configuration
