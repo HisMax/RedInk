@@ -2,6 +2,11 @@ import json
 import subprocess
 import sys
 
+from backend.services.content_case_library import (
+    append_case_records,
+    build_case_records,
+    load_case_records,
+)
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
     build_case_outline,
@@ -91,7 +96,9 @@ def test_run_quality_eval_dry_run_returns_summary_without_services():
 
     assert results[0]["case_id"] == "coffee_beginner"
     assert results[0]["title_count"] == 3
+    assert "步骤讲清楚" in results[0]["copywriting"]
     assert results[0]["copywriting_length"] > 0
+    assert "质量评测" in results[0]["tags"]
     assert results[0]["tag_count"] >= 3
     assert results[0]["overall"] >= 70
     assert results[0]["decision"] == "approve"
@@ -121,6 +128,8 @@ def test_run_quality_eval_live_uses_injected_services():
     assert len(quality_service.calls) == 1
     assert quality_service.calls[0]["titles"] == ["新手如何学会手冲咖啡 标题"]
     assert results[0]["trace_id"] == "xhs_fake_trace"
+    assert results[0]["copywriting"] == "新手如何学会手冲咖啡 正文，包含清晰步骤和用户收益。"
+    assert results[0]["tags"] == ["小红书", "内容创作"]
     assert results[0]["overall"] == 87
     assert results[0]["issues_count"] == 1
     assert results[0]["suggestions_count"] == 1
@@ -293,6 +302,54 @@ def test_compare_quality_trend_fails_when_score_drop_exceeds_threshold():
     assert comparison["failures"][0]["case_id"] == "coffee_beginner"
 
 
+def test_content_case_library_appends_review_ready_records(tmp_path):
+    results = [
+        {
+            "case_id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "trace_id": "xhs_fake_trace",
+            "titles": ["标题A", "标题B"],
+            "copywriting": "正文内容",
+            "tags": ["咖啡", "新手"],
+            "title_count": 2,
+            "copywriting_length": 4,
+            "tag_count": 2,
+            "overall": 87,
+            "decision": "approve",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "publish_gate_enabled": False,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "trend_passed": True,
+            "trend_reason": "",
+            "error": None,
+        }
+    ]
+
+    records = build_case_records(
+        results,
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    library_path = tmp_path / "content_cases.jsonl"
+
+    append_case_records(records, library_path)
+    loaded = load_case_records(library_path)
+
+    assert len(loaded) == 1
+    assert loaded[0]["schema_version"] == "xhs_content_case.v1"
+    assert loaded[0]["record_id"] == "eval_001:coffee_beginner"
+    assert loaded[0]["content"]["titles"] == ["标题A", "标题B"]
+    assert loaded[0]["content"]["copywriting"] == "正文内容"
+    assert loaded[0]["content"]["tags"] == ["咖啡", "新手"]
+    assert loaded[0]["quality"]["overall"] == 87
+    assert loaded[0]["human_review"]["status"] == "unreviewed"
+    assert loaded[0]["human_review"]["issue_types"] == []
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -341,6 +398,31 @@ def test_cli_dry_run_outputs_summary_json():
     assert payload["case_count"] == 5
     assert len(payload["results"]) == 5
     assert payload["baseline"]["passed"] is True
+
+
+def test_cli_can_append_content_case_library(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--case-library",
+            str(library_path),
+            "--run-id",
+            "eval_cli_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    records = load_case_records(library_path)
+    assert payload["case_library"]["saved_count"] == 5
+    assert records[0]["run_id"] == "eval_cli_001"
+    assert records[0]["content"]["copywriting"]
+    assert records[0]["human_review"]["status"] == "unreviewed"
 
 
 def test_cli_exits_nonzero_when_baseline_fails():
@@ -401,6 +483,29 @@ def test_make_eval_quality_runs_dry_run_report(tmp_path):
     assert payload["baseline"]["passed"] is True
     assert (tmp_path / "xhs-quality-eval.jsonl").exists()
     assert (tmp_path / "xhs-quality-eval.md").exists()
+
+
+def test_make_eval_quality_can_append_case_library(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+
+    completed = subprocess.run(
+        [
+            "make",
+            "eval-quality",
+            f"REPORT_DIR={tmp_path}",
+            f"PYTHON={sys.executable}",
+            f"EVAL_CASE_LIBRARY={library_path}",
+            "EVAL_RUN_ID=make_eval_001",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    records = load_case_records(library_path)
+    assert payload["case_library"]["saved_count"] == 5
+    assert records[0]["run_id"] == "make_eval_001"
 
 
 def test_make_eval_quality_can_compare_previous_report(tmp_path):

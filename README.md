@@ -211,6 +211,12 @@ Call the live content and quality services:
 make eval-quality EVAL_LIVE=1
 ```
 
+Append evaluated content to a local case library for human review and future optimization:
+
+```bash
+make eval-quality EVAL_CASE_LIBRARY=reports/xhs-content-cases.jsonl EVAL_RUN_ID=manual_eval_001
+```
+
 ---
 
 ## 🔧 Configuration

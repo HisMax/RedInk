@@ -2,6 +2,8 @@ REPORT_DIR ?= reports
 EVAL_JSONL ?= $(REPORT_DIR)/xhs-quality-eval.jsonl
 EVAL_MARKDOWN ?= $(REPORT_DIR)/xhs-quality-eval.md
 EVAL_PREVIOUS ?=
+EVAL_CASE_LIBRARY ?=
+EVAL_RUN_ID ?= xhs_quality_eval
 EVAL_MIN_OVERALL ?= 80
 EVAL_MAX_SCORE_DROP ?= 3
 EVAL_LIVE ?= 0
@@ -9,8 +11,13 @@ EVAL_REPORT_ONLY ?= 0
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
+EVAL_ARGS += --run-id "$(EVAL_RUN_ID)"
 EVAL_ARGS += --min-overall "$(EVAL_MIN_OVERALL)"
 EVAL_ARGS += --max-score-drop "$(EVAL_MAX_SCORE_DROP)"
+
+ifneq ($(strip $(EVAL_CASE_LIBRARY)),)
+EVAL_ARGS += --case-library "$(EVAL_CASE_LIBRARY)"
+endif
 
 ifneq ($(strip $(EVAL_PREVIOUS)),)
 EVAL_ARGS += --compare-jsonl "$(EVAL_PREVIOUS)"

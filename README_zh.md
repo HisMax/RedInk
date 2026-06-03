@@ -223,6 +223,12 @@ make eval-quality EVAL_PREVIOUS=reports/xhs-quality-eval.jsonl EVAL_MAX_SCORE_DR
 make eval-quality EVAL_LIVE=1
 ```
 
+将评测内容追加到本地案例库，供人工复盘和后续优化使用：
+
+```bash
+make eval-quality EVAL_CASE_LIBRARY=reports/xhs-content-cases.jsonl EVAL_RUN_ID=manual_eval_001
+```
+
 ---
 
 ## 🔧 配置说明

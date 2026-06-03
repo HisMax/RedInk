@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
+from backend.services.content_case_library import append_case_records, build_case_records
 from backend.services.xhs_quality_eval import (
     DEFAULT_ALLOWED_DECISIONS,
     DEFAULT_CASES_PATH,
@@ -30,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--live", action="store_true", help="Call live ContentService and QualityService.")
     parser.add_argument("--jsonl", help="Optional path for JSONL report output.")
     parser.add_argument("--markdown", help="Optional path for Markdown report output.")
+    parser.add_argument("--case-library", help="Optional JSONL content case library path to append.")
+    parser.add_argument("--run-id", help="Stable run id for reports and case library records.")
     parser.add_argument("--min-overall", type=int, default=DEFAULT_MIN_OVERALL, help="Minimum overall score.")
     parser.add_argument(
         "--compare-jsonl",
@@ -53,6 +56,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    run_id = args.run_id or "xhs_quality_eval"
     cases = load_quality_cases(args.cases)
     results = run_quality_eval(cases, live=args.live)
     allowed_decisions = args.allowed_decisions or list(DEFAULT_ALLOWED_DECISIONS)
@@ -74,13 +78,28 @@ def main() -> int:
         write_jsonl_report(results, Path(args.jsonl))
     if args.markdown:
         write_markdown_report(results, Path(args.markdown))
+    case_library = None
+    if args.case_library:
+        records = build_case_records(
+            results,
+            run_id=run_id,
+            source="xhs_quality_eval",
+        )
+        saved_count = append_case_records(records, Path(args.case_library))
+        case_library = {
+            "path": args.case_library,
+            "run_id": run_id,
+            "saved_count": saved_count,
+        }
 
     payload = {
         "mode": "live" if args.live else "dry-run",
+        "run_id": run_id,
         "case_count": len(cases),
         "success_count": sum(1 for result in results if result.get("error") is None),
         "baseline": baseline,
         "comparison": comparison,
+        "case_library": case_library,
         "results": results,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

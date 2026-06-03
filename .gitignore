@@ -62,6 +62,7 @@ history/*
 # Logs
 *.log
 logs/
+reports/
 
 # Testing
 .pytest_cache/
