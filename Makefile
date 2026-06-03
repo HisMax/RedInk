@@ -65,6 +65,8 @@ LOOP_APPLY_APPROVED ?= 0
 LOOP_PROMOTED_CASES ?= $(LOOP_REPORT_DIR)/xhs-quality-cases.next.json
 LOOP_PROMOTED_VERSION_ID ?= xhs_quality_cases_next
 LOOP_PROMOTE_APPROVED ?= 0
+LOOP_RECOMMENDED_CASES ?= $(LOOP_REPORT_DIR)/xhs-quality-cases.recommended.json
+LOOP_MARK_RECOMMENDED ?= 0
 AB_REPORT_DIR ?= $(REPORT_DIR)/xhs-quality-ab
 AB_BASE_CASES ?= tests/fixtures/xhs_quality_cases.json
 AB_CANDIDATE_CASES ?= $(LOOP_PROMOTED_CASES)
@@ -192,6 +194,16 @@ else
 PROMOTE_EVAL_CASE_ARGS += --dry-run
 endif
 
+RECOMMEND_EVAL_CASE_ARGS := --version-id "$(LOOP_PROMOTED_VERSION_ID)"
+RECOMMEND_EVAL_CASE_ARGS += --candidate-cases "$(LOOP_PROMOTED_CASES)" --ab-index "$(LOOP_AB_INDEX)"
+RECOMMEND_EVAL_CASE_ARGS += --recommended-output "$(LOOP_RECOMMENDED_CASES)"
+
+ifeq ($(LOOP_MARK_RECOMMENDED),1)
+RECOMMEND_EVAL_CASE_ARGS += --mark-recommended
+else
+RECOMMEND_EVAL_CASE_ARGS += --dry-run
+endif
+
 AB_ARGS := --base-cases "$(AB_BASE_CASES)" --candidate-cases "$(AB_CANDIDATE_CASES)"
 AB_ARGS += --report-dir "$(AB_REPORT_DIR)" --run-id "$(AB_RUN_ID)"
 AB_ARGS += --min-overall "$(AB_MIN_OVERALL)" --max-score-drop "$(AB_MAX_SCORE_DROP)"
@@ -204,7 +216,7 @@ ifeq ($(AB_REPORT_ONLY),1)
 AB_ARGS += --report-only
 endif
 
-.PHONY: eval-quality eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases test-quality
+.PHONY: eval-quality eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -245,6 +257,10 @@ apply-improvements:
 promote-eval-cases:
 	@mkdir -p "$(dir $(LOOP_PROMOTED_CASES))"
 	@$(PYTHON) scripts/promote_xhs_eval_cases.py $(PROMOTE_EVAL_CASE_ARGS)
+
+recommend-eval-cases:
+	@mkdir -p "$(dir $(LOOP_RECOMMENDED_CASES))"
+	@$(PYTHON) scripts/promote_xhs_eval_cases.py $(RECOMMEND_EVAL_CASE_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q

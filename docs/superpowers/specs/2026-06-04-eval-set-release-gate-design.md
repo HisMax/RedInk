@@ -29,9 +29,12 @@ A version is eligible for recommendation only when all conditions are true:
 3. At least one added case exists in the latest evaluated candidate set.
 4. All added cases passed baseline across the A/B evidence used by the
    dashboard.
+5. The candidate cases file exists and its embedded `version_id` matches the
+   requested recommendation version.
 
 The gate rejects versions with shared-case regressions, failed comparison gates,
-failed added-case baselines, missing A/B evidence, or no added cases.
+failed added-case baselines, missing A/B evidence, no added cases, missing
+candidate files, or version mismatches.
 
 ## Architecture
 
@@ -96,5 +99,5 @@ Add focused tests in `tests/test_xhs_quality_eval.py`:
 - A passing low-risk version writes the recommended manifest.
 - Medium or high-risk versions are rejected and do not write the manifest.
 - A version with no added cases is rejected.
+- Missing candidate files and candidate `version_id` mismatches are rejected.
 - CLI and Makefile paths exercise the gated recommendation flow.
-

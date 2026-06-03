@@ -54,6 +54,7 @@ from backend.services.xhs_improvement_apply import (
 )
 from backend.services.xhs_eval_case_promotion import (
     load_eval_case_candidates,
+    mark_recommended_eval_case_set,
     promote_approved_eval_case_candidates,
 )
 from backend.services.xhs_quality_loop import run_quality_loop
@@ -207,6 +208,36 @@ def _versioned_quality_cases_path(tmp_path, *, version_id="xhs_quality_cases_tes
         encoding="utf-8",
     )
     return version_path
+
+
+def _write_ab_index_row(
+    path,
+    *,
+    version_id="xhs_quality_cases_v2",
+    added_case_count=1,
+    added_passed_count=1,
+    added_failed_count=0,
+    regression_failed_count=0,
+    comparison_passed=True,
+    run_id="ab_001",
+):
+    path.write_text(
+        json.dumps({
+            "schema_version": "xhs_quality_ab_index.v1",
+            "run_id": run_id,
+            "created_at": "2026-06-04T11:00:00Z",
+            "run_report": "",
+            "candidate_version_id": version_id,
+            "candidate_case_count": 2,
+            "shared_case_count": 1,
+            "added_case_count": added_case_count,
+            "added_case_baseline_passed_count": added_passed_count,
+            "added_case_baseline_failed_count": added_failed_count,
+            "regression_failed_count": regression_failed_count,
+            "comparison_passed": comparison_passed,
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_load_quality_cases_reads_fixture():
@@ -1875,7 +1906,14 @@ def test_quality_loop_history_summarizes_ab_eval_set_versions(tmp_path):
     assert version["added_case_baseline_passed_count"] == 1
     assert version["regression_failed_count"] == 1
     assert version["risk_level"] == "high"
+    gate = version["recommendation_gate"]
+    assert gate["eligible"] is False
+    assert gate["status"] == "blocked"
+    assert gate["latest_run_id"] == "ab_001"
+    assert "risk level is high" in gate["reasons"]
     assert "## Eval Set Versions" in markdown
+    assert "| Risk | Gate |" in markdown
+    assert "| high | blocked |" in markdown
     assert "xhs_quality_cases_v2" in markdown
 
 
@@ -2340,6 +2378,223 @@ def test_promote_approved_eval_case_candidates_cli_dry_run_and_promote(tmp_path)
     assert dry_payload["would_write_count"] == 6
     assert promote_payload["written_count"] == 6
     assert version["metadata"]["promoted_count"] == 1
+
+
+def test_mark_recommended_eval_case_set_writes_manifest_when_gate_passes(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_v2",
+        added_case_count=1,
+        added_passed_count=1,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    payload = mark_recommended_eval_case_set(
+        version_id="xhs_quality_cases_v2",
+        candidate_cases_path=candidate_path,
+        ab_index_path=ab_index_path,
+        output_path=manifest_path,
+        mark_recommended=True,
+        recommended_at="2026-06-04T12:00:00Z",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["gate"]["eligible"] is True
+    assert payload["written"] is True
+    assert manifest["schema_version"] == "xhs_recommended_eval_set.v1"
+    assert manifest["version_id"] == "xhs_quality_cases_v2"
+    assert manifest["latest_run_id"] == "ab_001"
+
+
+def test_mark_recommended_eval_case_set_rejects_failed_added_cases(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_v2",
+        added_case_count=1,
+        added_passed_count=0,
+        added_failed_count=1,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    payload = mark_recommended_eval_case_set(
+        version_id="xhs_quality_cases_v2",
+        candidate_cases_path=candidate_path,
+        ab_index_path=ab_index_path,
+        output_path=manifest_path,
+        mark_recommended=True,
+    )
+
+    assert payload["gate"]["eligible"] is False
+    assert payload["written"] is False
+    assert manifest_path.exists() is False
+
+
+def test_mark_recommended_eval_case_set_rejects_versions_without_added_cases(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_v2",
+        added_case_count=0,
+        added_passed_count=0,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    payload = mark_recommended_eval_case_set(
+        version_id="xhs_quality_cases_v2",
+        candidate_cases_path=candidate_path,
+        ab_index_path=ab_index_path,
+        output_path=manifest_path,
+        mark_recommended=True,
+    )
+
+    assert payload["gate"]["eligible"] is False
+    assert "no added cases were evaluated" in payload["gate"]["reasons"]
+    assert payload["written"] is False
+    assert manifest_path.exists() is False
+
+
+def test_mark_recommended_eval_case_set_rejects_missing_candidate_file(tmp_path):
+    candidate_path = tmp_path / "missing-xhs-quality-cases.next.json"
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_v2",
+        added_case_count=1,
+        added_passed_count=1,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    payload = mark_recommended_eval_case_set(
+        version_id="xhs_quality_cases_v2",
+        candidate_cases_path=candidate_path,
+        ab_index_path=ab_index_path,
+        output_path=manifest_path,
+        mark_recommended=True,
+    )
+
+    assert payload["gate"]["eligible"] is False
+    assert "candidate cases file does not exist" in payload["gate"]["reasons"]
+    assert payload["written"] is False
+    assert manifest_path.exists() is False
+
+
+def test_mark_recommended_eval_case_set_rejects_candidate_version_mismatch(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_other_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_v2",
+        added_case_count=1,
+        added_passed_count=1,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    payload = mark_recommended_eval_case_set(
+        version_id="xhs_quality_cases_v2",
+        candidate_cases_path=candidate_path,
+        ab_index_path=ab_index_path,
+        output_path=manifest_path,
+        mark_recommended=True,
+    )
+
+    assert payload["gate"]["eligible"] is False
+    assert "candidate version_id is xhs_quality_cases_other_v2" in payload["gate"]["reasons"]
+    assert payload["written"] is False
+    assert manifest_path.exists() is False
+
+
+def test_recommended_eval_case_set_cli_writes_manifest(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_cli_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_cli_v2",
+        added_case_count=1,
+        added_passed_count=1,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/promote_xhs_eval_cases.py",
+            "--version-id",
+            "xhs_quality_cases_cli_v2",
+            "--candidate-cases",
+            str(candidate_path),
+            "--ab-index",
+            str(ab_index_path),
+            "--recommended-output",
+            str(manifest_path),
+            "--mark-recommended",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["written"] is True
+    assert payload["gate"]["eligible"] is True
+    assert manifest_path.exists() is True
+
+
+def test_make_recommend_eval_cases_writes_manifest(tmp_path):
+    candidate_path = _versioned_quality_cases_path(tmp_path, version_id="xhs_quality_cases_make_v2")
+    ab_index_path = tmp_path / "xhs-quality-ab-index.jsonl"
+    manifest_path = tmp_path / "xhs-quality-cases.recommended.json"
+    _write_ab_index_row(
+        ab_index_path,
+        version_id="xhs_quality_cases_make_v2",
+        added_case_count=1,
+        added_passed_count=1,
+        added_failed_count=0,
+        regression_failed_count=0,
+        comparison_passed=True,
+    )
+
+    completed = subprocess.run(
+        [
+            "make",
+            "recommend-eval-cases",
+            f"PYTHON={sys.executable}",
+            "LOOP_PROMOTED_VERSION_ID=xhs_quality_cases_make_v2",
+            f"LOOP_PROMOTED_CASES={candidate_path}",
+            f"LOOP_AB_INDEX={ab_index_path}",
+            f"LOOP_RECOMMENDED_CASES={manifest_path}",
+            "LOOP_MARK_RECOMMENDED=1",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["written"] is True
+    assert payload["version_id"] == "xhs_quality_cases_make_v2"
+    assert manifest_path.exists() is True
 
 
 def test_quality_ab_cli_compares_base_and_versioned_candidate(tmp_path):

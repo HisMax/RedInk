@@ -215,7 +215,7 @@ def _eval_set_version_dashboard(
             added_failed_count=added_failed_count,
             comparison_failed_count=comparison_failed_count,
         )
-        versions.append({
+        version = {
             "version_id": version_id,
             "candidate_format": latest.get("candidate_format"),
             "ab_run_count": len(runs),
@@ -234,7 +234,9 @@ def _eval_set_version_dashboard(
             "ab_run_ids": [run.get("run_id") for run in runs if run.get("run_id")],
             "risk_level": risk_level,
             "risk_reasons": risk_reasons,
-        })
+        }
+        version["recommendation_gate"] = _recommendation_gate(version)
+        versions.append(version)
     return {
         "schema_version": EVAL_SET_DASHBOARD_SCHEMA_VERSION,
         "ab_index_path": str(ab_index_path) if ab_index_path else None,
@@ -261,6 +263,24 @@ def _eval_set_risk(
     if added_failed_count or comparison_failed_count:
         return "medium", reasons
     return "low", reasons
+
+
+def _recommendation_gate(version: Dict[str, Any]) -> Dict[str, Any]:
+    reasons = []
+    risk_level = version.get("risk_level")
+    if risk_level != "low":
+        reasons.append(f"risk level is {risk_level or 'unknown'}")
+    if _int(version.get("added_case_count")) <= 0:
+        reasons.append("no added cases were evaluated")
+    if _int(version.get("added_case_baseline_failed_count")):
+        reasons.append("added cases failed baseline")
+    eligible = not reasons
+    return {
+        "eligible": eligible,
+        "status": "passed" if eligible else "blocked",
+        "reasons": reasons,
+        "latest_run_id": version.get("latest_run_id"),
+    }
 
 
 def _summary_int(row: Dict[str, Any], summary: Dict[str, Any], key: str) -> int:
@@ -605,12 +625,12 @@ def _markdown(summary: Dict[str, Any]) -> str:
         f"- A/B index: `{dashboard.get('ab_index_path') or ''}`",
         f"- Versions: {dashboard.get('version_count', 0)}",
         "",
-        "| Version | Runs | Latest Run | Cases | Added | Added Pass | Added Fail | Regressions | Comparison Fail | Risk |",
-        "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Version | Runs | Latest Run | Cases | Added | Added Pass | Added Fail | Regressions | Comparison Fail | Risk | Gate |",
+        "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ])
     for version in dashboard.get("versions") or []:
         lines.append(
-            "| {version_id} | {runs} | {latest} | {cases} | {added} | {added_pass} | {added_fail} | {regressions} | {comparison_fail} | {risk} |".format(
+            "| {version_id} | {runs} | {latest} | {cases} | {added} | {added_pass} | {added_fail} | {regressions} | {comparison_fail} | {risk} | {gate} |".format(
                 version_id=version.get("version_id") or "",
                 runs=_display_number(version.get("ab_run_count")),
                 latest=version.get("latest_run_id") or "",
@@ -621,6 +641,7 @@ def _markdown(summary: Dict[str, Any]) -> str:
                 regressions=_display_number(version.get("regression_failed_count")),
                 comparison_fail=_display_number(version.get("comparison_failed_count")),
                 risk=version.get("risk_level") or "",
+                gate=(version.get("recommendation_gate") or {}).get("status") or "",
             )
         )
     lines.extend([
