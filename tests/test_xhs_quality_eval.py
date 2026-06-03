@@ -8,6 +8,7 @@ from backend.services.content_case_library import (
     load_case_records,
     save_case_records,
     select_prompt_examples,
+    select_re_evaluated_prompt_examples,
     summarize_case_records,
     update_case_review,
     write_case_library_report,
@@ -953,6 +954,140 @@ def test_re_evaluation_applies_results_to_case_library_records():
     assert revised["revision_meta"]["re_evaluation"]["score_delta"] == 7
 
 
+def test_content_case_library_selects_re_evaluated_prompt_examples():
+    source_records = build_case_records(
+        [
+            {
+                "case_id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "trace_id": "quality_trace_1",
+                "titles": ["原标题A"],
+                "copywriting": "原正文A",
+                "tags": ["咖啡"],
+                "overall": 79,
+                "decision": "revise",
+                "issues_count": 1,
+                "suggestions_count": 2,
+                "baseline_passed": False,
+                "baseline_reason": "overall 79 below 80",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            },
+            {
+                "case_id": "office_efficiency",
+                "category": "职场效率",
+                "topic": "打工人如何用AI整理会议纪要",
+                "trace_id": "quality_trace_2",
+                "titles": ["原标题B"],
+                "copywriting": "原正文B",
+                "tags": ["AI"],
+                "overall": 84,
+                "decision": "approve",
+                "issues_count": 0,
+                "suggestions_count": 1,
+                "baseline_passed": True,
+                "baseline_reason": "",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            },
+        ],
+        run_id="eval_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    revised_records = build_revised_case_records(
+        source_records,
+        [
+            {
+                "request_id": "revision_001:eval_001:coffee_beginner",
+                "source_record_id": "eval_001:coffee_beginner",
+                "success": True,
+                "trace_id": "revision_trace_1",
+                "revision": {
+                    "titles": ["改后标题A"],
+                    "copywriting": "改后正文A",
+                    "tags": ["咖啡", "新手"],
+                    "revision_summary": ["强化开头钩子"],
+                },
+            },
+            {
+                "request_id": "revision_001:eval_001:office_efficiency",
+                "source_record_id": "eval_001:office_efficiency",
+                "success": True,
+                "trace_id": "revision_trace_2",
+                "revision": {
+                    "titles": ["改后标题B"],
+                    "copywriting": "改后正文B",
+                    "tags": ["AI", "会议纪要"],
+                    "revision_summary": ["补充工具流程"],
+                },
+            },
+        ],
+        run_id="revision_001",
+        created_at="2026-06-04T13:00:00Z",
+    )
+    records, _updated_count = apply_re_evaluation_results_to_case_library(
+        source_records + revised_records,
+        [
+            {
+                "record_id": "revision_001:eval_001:coffee_beginner:revised",
+                "source_record_id": "eval_001:coffee_beginner",
+                "run_id": "reeval_001",
+                "evaluated_at": "2026-06-04T15:00:00Z",
+                "trace_id": "xhs_reeval_trace_1",
+                "overall": 88,
+                "decision": "approve",
+                "issues_count": 0,
+                "suggestions_count": 1,
+                "publish_gate_enabled": False,
+                "error": None,
+                "previous_overall": 79,
+                "score_delta": 9,
+                "improvement_passed": True,
+                "improvement_reason": "",
+            },
+            {
+                "record_id": "revision_001:eval_001:office_efficiency:revised",
+                "source_record_id": "eval_001:office_efficiency",
+                "run_id": "reeval_001",
+                "evaluated_at": "2026-06-04T15:00:00Z",
+                "trace_id": "xhs_reeval_trace_2",
+                "overall": 85,
+                "decision": "approve",
+                "issues_count": 0,
+                "suggestions_count": 1,
+                "publish_gate_enabled": False,
+                "error": None,
+                "previous_overall": 84,
+                "score_delta": 1,
+                "improvement_passed": True,
+                "improvement_reason": "",
+            },
+        ],
+    )
+
+    examples = select_re_evaluated_prompt_examples(
+        records,
+        min_overall=85,
+        min_score_delta=3,
+        limit=5,
+    )
+
+    assert len(examples) == 1
+    assert examples[0]["record_id"] == "revision_001:eval_001:coffee_beginner:revised"
+    assert examples[0]["source_record_id"] == "eval_001:coffee_beginner"
+    assert examples[0]["title"] == "改后标题A"
+    assert examples[0]["copywriting"] == "改后正文A"
+    assert examples[0]["quality_overall"] == 88
+    assert examples[0]["previous_overall"] == 79
+    assert examples[0]["score_delta"] == 9
+    assert examples[0]["example_source"] == "re_evaluation"
+    assert examples[0]["revision_summary"] == ["强化开头钩子"]
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -1155,6 +1290,104 @@ def test_summarize_cli_writes_case_report_and_prompt_examples(tmp_path):
     assert payload["examples_count"] == 1
     assert report_path.exists()
     assert examples_path.exists()
+
+
+def test_summarize_cli_writes_re_evaluated_prompt_examples(tmp_path):
+    library_path = tmp_path / "content_cases.jsonl"
+    source_records = build_case_records(
+        [
+            {
+                "case_id": "coffee_beginner",
+                "category": "知识科普",
+                "topic": "新手如何学会手冲咖啡",
+                "trace_id": "quality_trace_1",
+                "titles": ["原标题"],
+                "copywriting": "原正文",
+                "tags": ["咖啡"],
+                "overall": 79,
+                "decision": "revise",
+                "issues_count": 1,
+                "suggestions_count": 2,
+                "baseline_passed": False,
+                "baseline_reason": "overall 79 below 80",
+                "trend_passed": True,
+                "trend_reason": "",
+                "error": None,
+            }
+        ],
+        run_id="eval_cli_001",
+        source="xhs_quality_eval",
+        created_at="2026-06-03T12:00:00Z",
+    )
+    revised_records = build_revised_case_records(
+        source_records,
+        [
+            {
+                "request_id": "revision_cli_001:eval_cli_001:coffee_beginner",
+                "source_record_id": "eval_cli_001:coffee_beginner",
+                "success": True,
+                "trace_id": "revision_trace_1",
+                "revision": {
+                    "titles": ["改后标题"],
+                    "copywriting": "改后正文",
+                    "tags": ["咖啡", "新手"],
+                    "revision_summary": ["强化开头钩子"],
+                },
+            }
+        ],
+        run_id="revision_cli_001",
+        created_at="2026-06-04T13:00:00Z",
+    )
+    records, _updated_count = apply_re_evaluation_results_to_case_library(
+        source_records + revised_records,
+        [
+            {
+                "record_id": "revision_cli_001:eval_cli_001:coffee_beginner:revised",
+                "source_record_id": "eval_cli_001:coffee_beginner",
+                "run_id": "reeval_cli_001",
+                "evaluated_at": "2026-06-04T15:00:00Z",
+                "trace_id": "xhs_reeval_trace",
+                "overall": 88,
+                "decision": "approve",
+                "issues_count": 0,
+                "suggestions_count": 1,
+                "publish_gate_enabled": False,
+                "error": None,
+                "previous_overall": 79,
+                "score_delta": 9,
+                "improvement_passed": True,
+                "improvement_reason": "",
+            }
+        ],
+    )
+    save_case_records(records, library_path)
+    examples_path = tmp_path / "quality_prompt_examples.jsonl"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/summarize_xhs_content_cases.py",
+            "--library",
+            str(library_path),
+            "--quality-examples-jsonl",
+            str(examples_path),
+            "--min-quality-overall",
+            "85",
+            "--min-score-delta",
+            "3",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    examples = [json.loads(line) for line in examples_path.read_text(encoding="utf-8").splitlines()]
+    assert payload["quality_examples_count"] == 1
+    assert payload["quality_examples_jsonl"] == str(examples_path)
+    assert examples[0]["record_id"] == "revision_cli_001:eval_cli_001:coffee_beginner:revised"
+    assert examples[0]["score_delta"] == 9
+    assert examples[0]["example_source"] == "re_evaluation"
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):

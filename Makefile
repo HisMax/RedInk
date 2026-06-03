@@ -11,7 +11,10 @@ EVAL_REPORT_ONLY ?= 0
 CASE_LIBRARY ?= reports/xhs-content-cases.jsonl
 CASE_REPORT ?= $(REPORT_DIR)/xhs-content-case-report.md
 CASE_EXAMPLES ?= $(REPORT_DIR)/xhs-prompt-examples.jsonl
+CASE_QUALITY_EXAMPLES ?= $(REPORT_DIR)/xhs-quality-prompt-examples.jsonl
 CASE_MIN_VIRAL ?= 4
+CASE_MIN_QUALITY_OVERALL ?= 85
+CASE_MIN_SCORE_DELTA ?= 3
 CASE_LIMIT ?= 20
 REVISION_LIBRARY ?= $(CASE_LIBRARY)
 REVISION_REQUESTS ?= $(REPORT_DIR)/xhs-revision-requests.jsonl
@@ -100,7 +103,7 @@ eval-quality:
 
 summarize-cases:
 	@mkdir -p "$(REPORT_DIR)"
-	@$(PYTHON) scripts/summarize_xhs_content_cases.py --library "$(CASE_LIBRARY)" --markdown "$(CASE_REPORT)" --examples-jsonl "$(CASE_EXAMPLES)" --min-viral-potential "$(CASE_MIN_VIRAL)" --limit "$(CASE_LIMIT)"
+	@$(PYTHON) scripts/summarize_xhs_content_cases.py --library "$(CASE_LIBRARY)" --markdown "$(CASE_REPORT)" --examples-jsonl "$(CASE_EXAMPLES)" --quality-examples-jsonl "$(CASE_QUALITY_EXAMPLES)" --min-viral-potential "$(CASE_MIN_VIRAL)" --min-quality-overall "$(CASE_MIN_QUALITY_OVERALL)" --min-score-delta "$(CASE_MIN_SCORE_DELTA)" --limit "$(CASE_LIMIT)"
 
 plan-revisions:
 	@mkdir -p "$(REPORT_DIR)"

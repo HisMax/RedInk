@@ -229,6 +229,12 @@ Summarize reviewed cases and export high-quality prompt examples:
 make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl
 ```
 
+The same command also exports re-evaluated revision examples that meet the quality lift gate:
+
+```bash
+make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl CASE_MIN_QUALITY_OVERALL=85 CASE_MIN_SCORE_DELTA=3
+```
+
 Plan second-pass revisions for cases that failed gates or human review:
 
 ```bash

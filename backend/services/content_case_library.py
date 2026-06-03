@@ -229,6 +229,65 @@ def select_prompt_examples(
     return candidates[:limit]
 
 
+def select_re_evaluated_prompt_examples(
+    records: Iterable[Dict[str, Any]],
+    *,
+    min_overall: int = 85,
+    min_score_delta: int = 3,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """Select improved revised cases as automatic prompt examples."""
+    candidates = []
+    for row in records:
+        revision_meta = row.get("revision_meta") or {}
+        re_evaluation = revision_meta.get("re_evaluation") or {}
+        quality = row.get("quality") or {}
+        content = row.get("content") or {}
+        if not revision_meta.get("source_record_id"):
+            continue
+        if quality.get("decision") != "approve":
+            continue
+        if _coalesce_bool(quality.get("improvement_passed"), re_evaluation.get("improvement_passed")) is not True:
+            continue
+
+        overall = _coalesce_number(quality.get("overall"), re_evaluation.get("overall"))
+        score_delta = _coalesce_number(quality.get("score_delta"), re_evaluation.get("score_delta"))
+        previous_overall = _coalesce_number(quality.get("previous_overall"), re_evaluation.get("previous_overall"))
+        if not isinstance(overall, (int, float)) or overall < min_overall:
+            continue
+        if not isinstance(score_delta, (int, float)) or score_delta < min_score_delta:
+            continue
+        if not content.get("copywriting"):
+            continue
+
+        case = row.get("case") or {}
+        candidates.append({
+            "record_id": row.get("record_id"),
+            "source_record_id": revision_meta.get("source_record_id"),
+            "category": case.get("category"),
+            "topic": case.get("topic"),
+            "title": _first(content.get("titles")),
+            "copywriting": content.get("copywriting", ""),
+            "tags": _as_list(content.get("tags")),
+            "quality_overall": overall,
+            "previous_overall": previous_overall,
+            "score_delta": score_delta,
+            "example_source": "re_evaluation",
+            "revision_summary": _as_list(revision_meta.get("revision_summary")),
+            "notes": "auto-selected from revision re-evaluation",
+        })
+
+    candidates.sort(
+        key=lambda item: (
+            item.get("score_delta") or 0,
+            item.get("quality_overall") or 0,
+            item.get("record_id") or "",
+        ),
+        reverse=True,
+    )
+    return candidates[:limit]
+
+
 def write_case_library_report(summary: Dict[str, Any], path: str | Path) -> None:
     """Write a compact Markdown report for a case library summary."""
     report_path = Path(path)
@@ -326,6 +385,20 @@ def _average(values: List[int | float]) -> float | int | None:
 def _first(value: Any) -> Any:
     values = _as_list(value)
     return values[0] if values else None
+
+
+def _coalesce_number(*values: Any) -> int | float | None:
+    for value in values:
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
+
+def _coalesce_bool(*values: Any) -> bool | None:
+    for value in values:
+        if isinstance(value, bool):
+            return value
+    return None
 
 
 def _utc_now() -> str:

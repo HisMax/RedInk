@@ -241,6 +241,12 @@ uv run python scripts/review_xhs_content_case.py --library reports/xhs-content-c
 make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl
 ```
 
+同一命令也会导出通过再评测提升门禁的自动优质样本：
+
+```bash
+make summarize-cases CASE_LIBRARY=reports/xhs-content-cases.jsonl CASE_MIN_QUALITY_OVERALL=85 CASE_MIN_SCORE_DELTA=3
+```
+
 为未过门禁或人工复盘不通过的案例生成二次改稿请求：
 
 ```bash
