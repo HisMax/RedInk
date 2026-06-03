@@ -329,6 +329,12 @@ reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
 
 `make summarize-loop` 会读取 A/B index，并在历史报告中加入 eval set 版本看板，展示增量 case 表现和回退风险。
 
+也可以用一个门禁流水线命令完整执行发布流程：
+
+```bash
+make release-eval-cases
+```
+
 只有 A/B 和历史看板门禁都显示低风险后，才把候选评测集标记为当前推荐集：
 
 ```bash

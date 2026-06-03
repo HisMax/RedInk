@@ -317,6 +317,12 @@ reports/xhs-quality-ab/xhs-quality-ab-index.jsonl
 
 `make summarize-loop` reads the A/B index and adds an eval set version dashboard with added-case performance and regression risk.
 
+Run the complete release sequence as one gated pipeline:
+
+```bash
+make release-eval-cases
+```
+
 Mark the candidate as the current recommended eval set only after A/B and the
 history dashboard gate are low risk:
 

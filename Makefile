@@ -222,7 +222,7 @@ ifeq ($(AB_REPORT_ONLY),1)
 AB_ARGS += --report-only
 endif
 
-.PHONY: eval-quality eval-quality-recommended eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop xhs-quality-loop-recommended summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases test-quality
+.PHONY: eval-quality eval-quality-recommended eval-quality-ab summarize-cases plan-revisions re-eval-revisions xhs-quality-loop xhs-quality-loop-recommended summarize-loop draft-improvements apply-improvements promote-eval-cases recommend-eval-cases release-eval-cases test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -277,6 +277,12 @@ promote-eval-cases:
 recommend-eval-cases:
 	@mkdir -p "$(dir $(LOOP_RECOMMENDED_CASES))"
 	@$(PYTHON) scripts/promote_xhs_eval_cases.py $(RECOMMEND_EVAL_CASE_ARGS)
+
+release-eval-cases:
+	@$(MAKE) promote-eval-cases LOOP_PROMOTE_APPROVED=1
+	@$(MAKE) eval-quality-ab
+	@$(MAKE) summarize-loop
+	@$(MAKE) recommend-eval-cases LOOP_MARK_RECOMMENDED=1
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q
