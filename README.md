@@ -330,6 +330,11 @@ reports/xhs-quality-loop/xhs-eval-set-release-summary.json
 reports/xhs-quality-loop/xhs-eval-set-release-summary.md
 ```
 
+Relevant PRs run the `XHS Eval Release Gate` workflow
+(`.github/workflows/xhs-eval-release-gate.yml`). The workflow executes
+`make release-eval-cases` with a tracked approved candidate fixture and uploads
+the release summary artifacts for review.
+
 Mark the candidate as the current recommended eval set only after A/B and the
 history dashboard gate are low risk:
 

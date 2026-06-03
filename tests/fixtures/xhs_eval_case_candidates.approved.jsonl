@@ -1,0 +1,1 @@
+{"schema_version":"xhs_eval_case_candidate.v1","candidate_id":"ci_release_gate:eval_case_001","source_draft_id":"eval_case_001","source_task_id":"eval_task_001","source_issue_id":"ci_release_gate","status":"approved","category":"quality_regression","topic":"标题钩子和信息密度验证","outline":{"goal":"验证标题和正文是否更具体"},"expected_traits":["标题钩子","可执行细节"]}

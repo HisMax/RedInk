@@ -342,6 +342,11 @@ reports/xhs-quality-loop/xhs-eval-set-release-summary.json
 reports/xhs-quality-loop/xhs-eval-set-release-summary.md
 ```
 
+相关 PR 会运行 `XHS Eval Release Gate` workflow
+（`.github/workflows/xhs-eval-release-gate.yml`）。该 workflow 使用 tracked
+approved candidate fixture 执行 `make release-eval-cases`，并上传 release
+summary 产物供复盘。
+
 只有 A/B 和历史看板门禁都显示低风险后，才把候选评测集标记为当前推荐集：
 
 ```bash

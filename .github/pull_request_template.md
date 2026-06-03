@@ -25,3 +25,4 @@ Closes #
 - [ ] I have tested this change locally
 - [ ] Existing tests pass (`pytest`)
 - [ ] Frontend builds successfully (`pnpm build`)
+- [ ] XHS Eval Release Gate passes when touching eval release logic or candidate inputs

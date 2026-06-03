@@ -1,0 +1,59 @@
+name: XHS Eval Release Gate
+
+"on":
+  pull_request:
+    paths:
+      - ".github/workflows/xhs-eval-release-gate.yml"
+      - "Makefile"
+      - "backend/services/xhs_eval_case_promotion.py"
+      - "backend/services/xhs_eval_release.py"
+      - "backend/services/xhs_quality_eval.py"
+      - "backend/services/xhs_quality_history.py"
+      - "scripts/promote_xhs_eval_cases.py"
+      - "scripts/run_xhs_quality_ab.py"
+      - "scripts/summarize_xhs_eval_release.py"
+      - "scripts/summarize_xhs_quality_loop.py"
+      - "tests/fixtures/xhs_eval_case_candidates.approved.jsonl"
+      - "tests/test_ci_workflows.py"
+      - "tests/test_xhs_quality_eval.py"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run eval set release gate
+        run: |
+          make release-eval-cases \
+            REPORT_DIR="$RUNNER_TEMP/xhs-release-gate" \
+            LOOP_EVAL_CASE_CANDIDATES=tests/fixtures/xhs_eval_case_candidates.approved.jsonl
+
+      - name: Upload release gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xhs-eval-release-gate
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/xhs-release-gate/xhs-quality-loop/xhs-quality-cases.next.json
+            ${{ runner.temp }}/xhs-release-gate/xhs-quality-loop/xhs-quality-cases.recommended.json
+            ${{ runner.temp }}/xhs-release-gate/xhs-quality-loop/xhs-eval-set-release-summary.json
+            ${{ runner.temp }}/xhs-release-gate/xhs-quality-loop/xhs-eval-set-release-summary.md
+            ${{ runner.temp }}/xhs-release-gate/xhs-quality-ab/xhs-quality-ab-index.jsonl
