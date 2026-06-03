@@ -271,6 +271,18 @@ make draft-improvements
 
 This writes prompt patch drafts, eval case drafts, revision prompt drafts, and an execution checklist under `reports/xhs-quality-loop/improvement-drafts`.
 
+Dry-run approved draft application before writing candidates:
+
+```bash
+make apply-improvements
+```
+
+Append only `status=approved` eval case drafts to `xhs-eval-case-candidates.jsonl`:
+
+```bash
+make apply-improvements LOOP_APPLY_APPROVED=1
+```
+
 Enable live services step by step when your provider config is ready:
 
 ```bash

@@ -283,6 +283,18 @@ make draft-improvements
 
 该命令会在 `reports/xhs-quality-loop/improvement-drafts` 下生成 prompt patch 草案、eval case 草案、revision prompt 草案和执行清单。
 
+先用 dry-run 检查 approved 草案会追加哪些候选案例：
+
+```bash
+make apply-improvements
+```
+
+仅将 `status=approved` 的 eval case 草案追加到 `xhs-eval-case-candidates.jsonl`：
+
+```bash
+make apply-improvements LOOP_APPLY_APPROVED=1
+```
+
 服务商配置就绪后，可以逐步打开 live 服务：
 
 ```bash

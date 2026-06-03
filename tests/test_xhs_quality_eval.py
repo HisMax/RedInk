@@ -45,6 +45,10 @@ from backend.services.xhs_improvement_execution import (
     load_improvement_tasks,
     write_improvement_draft_bundle,
 )
+from backend.services.xhs_improvement_apply import (
+    apply_approved_eval_case_drafts,
+    load_eval_case_drafts,
+)
 from backend.services.xhs_quality_loop import run_quality_loop
 from backend.services.xhs_re_evaluation import (
     apply_improvement_gate,
@@ -1926,6 +1930,133 @@ def test_quality_improvement_drafts_cli_writes_draft_bundle(tmp_path):
     assert (draft_dir / "xhs-prompt-patch-drafts.md").exists()
     assert (draft_dir / "xhs-eval-case-drafts.jsonl").exists()
     assert (draft_dir / "xhs-improvement-execution-checklist.md").exists()
+
+
+def test_apply_approved_eval_case_drafts_requires_approval(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    plan_path = tmp_path / "improvement-plan.jsonl"
+    draft_dir = tmp_path / "drafts"
+    candidates_path = tmp_path / "xhs-eval-case-candidates.jsonl"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_apply_001",
+        min_overall=95,
+    )
+    summary = summarize_loop_history(index_path)
+    write_improvement_plan_jsonl(summary["improvement_plan"], plan_path)
+    bundle = build_improvement_draft_bundle(load_improvement_tasks(plan_path), run_id="draft_apply_001")
+    paths = write_improvement_draft_bundle(bundle, draft_dir)
+
+    drafts = load_eval_case_drafts(paths["eval_case_drafts"])
+    unapproved_payload = apply_approved_eval_case_drafts(
+        drafts,
+        candidates_path,
+        run_id="apply_unit_001",
+        dry_run=True,
+    )
+    drafts[0]["status"] = "approved"
+    approved_payload = apply_approved_eval_case_drafts(
+        drafts,
+        candidates_path,
+        run_id="apply_unit_001",
+        dry_run=True,
+    )
+    applied_payload = apply_approved_eval_case_drafts(
+        drafts,
+        candidates_path,
+        run_id="apply_unit_001",
+        apply_approved=True,
+    )
+
+    candidate_rows = [
+        json.loads(line)
+        for line in candidates_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert unapproved_payload["approved_count"] == 0
+    assert unapproved_payload["would_append_count"] == 0
+    assert approved_payload["dry_run"] is True
+    assert approved_payload["would_append_count"] == 1
+    assert approved_payload["target_exists"] is False
+    assert applied_payload["dry_run"] is False
+    assert applied_payload["appended_count"] == 1
+    assert candidate_rows[0]["schema_version"] == "xhs_eval_case_candidate.v1"
+    assert candidate_rows[0]["source_draft_id"] == drafts[0]["draft_id"]
+    assert candidate_rows[0]["status"] == "candidate"
+
+
+def test_apply_approved_eval_case_drafts_cli_dry_run_and_apply(tmp_path):
+    report_dir = tmp_path / "loop_reports"
+    index_path = tmp_path / "loop-index.jsonl"
+    plan_path = tmp_path / "improvement-plan.jsonl"
+    draft_dir = tmp_path / "drafts"
+    candidates_path = tmp_path / "xhs-eval-case-candidates.jsonl"
+
+    run_quality_loop(
+        cases_path="tests/fixtures/xhs_quality_cases.json",
+        report_dir=report_dir,
+        replay_index_path=index_path,
+        run_id="loop_apply_cli_001",
+        min_overall=95,
+    )
+    summary = summarize_loop_history(index_path)
+    write_improvement_plan_jsonl(summary["improvement_plan"], plan_path)
+    bundle = build_improvement_draft_bundle(load_improvement_tasks(plan_path), run_id="draft_apply_cli_001")
+    paths = write_improvement_draft_bundle(bundle, draft_dir)
+    drafts = load_eval_case_drafts(paths["eval_case_drafts"])
+    drafts[0]["status"] = "approved"
+    paths["eval_case_drafts"].write_text(
+        "\n".join(json.dumps(draft, ensure_ascii=False) for draft in drafts) + "\n",
+        encoding="utf-8",
+    )
+
+    dry_run = subprocess.run(
+        [
+            sys.executable,
+            "scripts/apply_xhs_improvements.py",
+            "--eval-case-drafts",
+            str(paths["eval_case_drafts"]),
+            "--candidate-jsonl",
+            str(candidates_path),
+            "--run-id",
+            "apply_cli_001",
+            "--dry-run",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    apply_run = subprocess.run(
+        [
+            sys.executable,
+            "scripts/apply_xhs_improvements.py",
+            "--eval-case-drafts",
+            str(paths["eval_case_drafts"]),
+            "--candidate-jsonl",
+            str(candidates_path),
+            "--run-id",
+            "apply_cli_001",
+            "--apply-approved",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    dry_payload = json.loads(dry_run.stdout)
+    apply_payload = json.loads(apply_run.stdout)
+    candidate_rows = [
+        json.loads(line)
+        for line in candidates_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert dry_payload["dry_run"] is True
+    assert dry_payload["would_append_count"] == 1
+    assert candidates_path.exists() is True
+    assert apply_payload["appended_count"] == 1
+    assert candidate_rows[0]["source_task_id"] == "eval_baseline_overall_below_threshold"
 
 
 def test_revision_plan_cli_writes_revision_requests(tmp_path):

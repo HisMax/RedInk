@@ -55,6 +55,10 @@ LOOP_HISTORY_MARKDOWN ?= $(LOOP_REPORT_DIR)/xhs-quality-loop-history.md
 LOOP_IMPROVEMENT_PLAN ?= $(LOOP_REPORT_DIR)/xhs-quality-improvement-plan.jsonl
 LOOP_IMPROVEMENT_DRAFT_DIR ?= $(LOOP_REPORT_DIR)/improvement-drafts
 LOOP_IMPROVEMENT_DRAFT_RUN_ID ?= xhs_improvement_drafts
+LOOP_EVAL_CASE_DRAFTS ?= $(LOOP_IMPROVEMENT_DRAFT_DIR)/xhs-eval-case-drafts.jsonl
+LOOP_EVAL_CASE_CANDIDATES ?= $(LOOP_REPORT_DIR)/xhs-eval-case-candidates.jsonl
+LOOP_APPLY_RUN_ID ?= xhs_apply_improvements
+LOOP_APPLY_APPROVED ?= 0
 LOOP_HISTORY_LIMIT ?=
 PYTHON ?= uv run python
 
@@ -156,7 +160,16 @@ endif
 DRAFT_IMPROVEMENT_ARGS := --plan-jsonl "$(LOOP_IMPROVEMENT_PLAN)" --output-dir "$(LOOP_IMPROVEMENT_DRAFT_DIR)"
 DRAFT_IMPROVEMENT_ARGS += --run-id "$(LOOP_IMPROVEMENT_DRAFT_RUN_ID)"
 
-.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements test-quality
+APPLY_IMPROVEMENT_ARGS := --eval-case-drafts "$(LOOP_EVAL_CASE_DRAFTS)" --candidate-jsonl "$(LOOP_EVAL_CASE_CANDIDATES)"
+APPLY_IMPROVEMENT_ARGS += --run-id "$(LOOP_APPLY_RUN_ID)"
+
+ifeq ($(LOOP_APPLY_APPROVED),1)
+APPLY_IMPROVEMENT_ARGS += --apply-approved
+else
+APPLY_IMPROVEMENT_ARGS += --dry-run
+endif
+
+.PHONY: eval-quality summarize-cases plan-revisions re-eval-revisions xhs-quality-loop summarize-loop draft-improvements apply-improvements test-quality
 
 eval-quality:
 	@mkdir -p "$(REPORT_DIR)"
@@ -185,6 +198,10 @@ summarize-loop:
 draft-improvements:
 	@mkdir -p "$(LOOP_IMPROVEMENT_DRAFT_DIR)"
 	@$(PYTHON) scripts/draft_xhs_improvements.py $(DRAFT_IMPROVEMENT_ARGS)
+
+apply-improvements:
+	@mkdir -p "$(dir $(LOOP_EVAL_CASE_CANDIDATES))"
+	@$(PYTHON) scripts/apply_xhs_improvements.py $(APPLY_IMPROVEMENT_ARGS)
 
 test-quality:
 	@uv run --with pytest pytest tests/test_xhs_quality_eval.py -q
