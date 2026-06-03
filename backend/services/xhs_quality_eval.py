@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional
 DEFAULT_CASES_PATH = Path("tests/fixtures/xhs_quality_cases.json")
 DEFAULT_MIN_OVERALL = 80
 DEFAULT_ALLOWED_DECISIONS = ("approve",)
+DEFAULT_MAX_SCORE_DROP = 3
 
 
 def load_quality_cases(path: str | Path = DEFAULT_CASES_PATH) -> List[Dict[str, Any]]:
@@ -34,6 +35,27 @@ def load_quality_cases(path: str | Path = DEFAULT_CASES_PATH) -> List[Dict[str, 
             raise ValueError(f"quality case {case['id']} expected_traits must be a list")
 
     return cases
+
+
+def load_previous_eval_results(path: str | Path) -> List[Dict[str, Any]]:
+    """Load previous evaluation results from JSONL, result array, or CLI JSON payload."""
+    report_path = Path(path)
+    if report_path.suffix == ".jsonl":
+        with report_path.open("r", encoding="utf-8") as f:
+            rows = [json.loads(line) for line in f if line.strip()]
+    else:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            rows = payload.get("results")
+        else:
+            rows = payload
+
+    if not isinstance(rows, list):
+        raise ValueError("previous evaluation report must contain a results array")
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"previous evaluation row at index {index} must be an object")
+    return rows
 
 
 def build_case_outline(case: Dict[str, Any]) -> str:
@@ -129,6 +151,72 @@ def apply_quality_baseline(
     }
 
 
+def compare_quality_trend(
+    results: Iterable[Dict[str, Any]],
+    previous_results: Iterable[Dict[str, Any]],
+    *,
+    max_score_drop: int = DEFAULT_MAX_SCORE_DROP,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Annotate results with score deltas against a previous evaluation report."""
+    previous_by_case = {
+        row["case_id"]: row
+        for row in previous_results
+        if row.get("case_id")
+    }
+    annotated = []
+    failures = []
+    compared_count = 0
+    skipped_count = 0
+
+    for result in results:
+        row = dict(result)
+        previous = previous_by_case.get(row.get("case_id"))
+        previous_overall = previous.get("overall") if previous else None
+        current_overall = row.get("overall")
+
+        row["previous_overall"] = previous_overall
+        row["score_delta"] = None
+        row["trend_passed"] = True
+        row["trend_reason"] = ""
+
+        if not isinstance(previous_overall, (int, float)) or not isinstance(current_overall, (int, float)):
+            skipped_count += 1
+            annotated.append(row)
+            continue
+
+        compared_count += 1
+        delta = current_overall - previous_overall
+        row["score_delta"] = delta
+        if delta < -max_score_drop:
+            reason = (
+                f"score dropped {_format_number(abs(delta))} points "
+                f"(from {_format_number(previous_overall)} to {_format_number(current_overall)})"
+            )
+            row["trend_passed"] = False
+            row["trend_reason"] = reason
+            failures.append({
+                "case_id": row.get("case_id"),
+                "topic": row.get("topic"),
+                "previous_overall": previous_overall,
+                "overall": current_overall,
+                "score_delta": delta,
+                "reason": reason,
+            })
+
+        annotated.append(row)
+
+    return annotated, {
+        "passed": not failures,
+        "previous_count": len(previous_by_case),
+        "checked_count": len(annotated),
+        "compared_count": compared_count,
+        "skipped_count": skipped_count,
+        "failed_count": len(failures),
+        "max_score_drop": max_score_drop,
+        "failures": failures,
+    }
+
+
 def write_jsonl_report(results: Iterable[Dict[str, Any]], path: str | Path) -> None:
     """Write one evaluation result per line as JSONL."""
     report_path = Path(path)
@@ -145,18 +233,27 @@ def write_markdown_report(results: Iterable[Dict[str, Any]], path: str | Path) -
     lines = [
         "# Xiaohongshu Quality Evaluation",
         "",
-        "| Case | Category | Decision | Overall | Trace | Titles | Copy Len | Tags | Issues | Suggestions | Baseline | Error |",
-        "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| Case | Category | Decision | Overall | Prev | Delta | Trace | Titles | Copy Len | Tags | Issues | Suggestions | Baseline | Trend | Error |",
+        "| --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
     ]
     for result in results:
         error = (result.get("error") or "").replace("|", "\\|")
         baseline = _format_baseline_status(result)
         baseline_reason = (result.get("baseline_reason") or "").replace("|", "\\|")
-        row = {**result, "baseline": baseline, "error": error or baseline_reason}
+        trend = _format_trend_status(result)
+        trend_reason = (result.get("trend_reason") or "").replace("|", "\\|")
+        row = {
+            **result,
+            "previous_overall": _format_optional_number(result.get("previous_overall")),
+            "score_delta": _format_delta(result.get("score_delta")),
+            "baseline": baseline,
+            "trend": trend,
+            "error": error or baseline_reason or trend_reason,
+        }
         lines.append(
-            "| {case_id} | {category} | {decision} | {overall} | {trace_id} | "
-            "{title_count} | {copywriting_length} | {tag_count} | {issues_count} | "
-            "{suggestions_count} | {baseline} | {error} |".format(**row)
+            "| {case_id} | {category} | {decision} | {overall} | {previous_overall} | {score_delta} | "
+            "{trace_id} | {title_count} | {copywriting_length} | {tag_count} | {issues_count} | "
+            "{suggestions_count} | {baseline} | {trend} | {error} |".format(**row)
         )
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -260,6 +357,27 @@ def _format_baseline_status(result: Dict[str, Any]) -> str:
     if "baseline_passed" not in result:
         return "n/a"
     return "pass" if result["baseline_passed"] else "fail"
+
+
+def _format_trend_status(result: Dict[str, Any]) -> str:
+    if "trend_passed" not in result:
+        return "n/a"
+    return "pass" if result["trend_passed"] else "fail"
+
+
+def _format_optional_number(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    return _format_number(value)
+
+
+def _format_delta(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    formatted = _format_number(value)
+    if value > 0:
+        return f"+{formatted}"
+    return formatted
 
 
 def _format_number(value: int | float) -> str:

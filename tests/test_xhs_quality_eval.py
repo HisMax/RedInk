@@ -5,6 +5,8 @@ import sys
 from backend.services.xhs_quality_eval import (
     apply_quality_baseline,
     build_case_outline,
+    compare_quality_trend,
+    load_previous_eval_results,
     load_quality_cases,
     run_quality_eval,
     write_jsonl_report,
@@ -213,6 +215,84 @@ def test_apply_quality_baseline_marks_failures_by_score_decision_and_error():
     ]
 
 
+def test_load_previous_eval_results_accepts_jsonl_and_payload_json(tmp_path):
+    jsonl_path = tmp_path / "previous.jsonl"
+    jsonl_path.write_text(
+        "\n".join([
+            json.dumps({"case_id": "coffee_beginner", "overall": 90}, ensure_ascii=False),
+            json.dumps({"case_id": "office_efficiency", "overall": 84}, ensure_ascii=False),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    payload_path = tmp_path / "previous.json"
+    payload_path.write_text(
+        json.dumps({
+            "mode": "dry-run",
+            "results": [{"case_id": "coffee_beginner", "overall": 91}],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert load_previous_eval_results(jsonl_path)[0]["overall"] == 90
+    assert load_previous_eval_results(payload_path)[0]["overall"] == 91
+
+
+def test_compare_quality_trend_fails_when_score_drop_exceeds_threshold():
+    current = [
+        {
+            "case_id": "coffee_beginner",
+            "category": "知识科普",
+            "topic": "新手如何学会手冲咖啡",
+            "trace_id": "current_trace",
+            "titles": ["标题"],
+            "title_count": 1,
+            "copywriting_length": 30,
+            "tag_count": 2,
+            "overall": 84,
+            "decision": "approve",
+            "issues_count": 1,
+            "suggestions_count": 2,
+            "publish_gate_enabled": False,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "error": None,
+        },
+        {
+            "case_id": "new_case",
+            "category": "知识科普",
+            "topic": "新增案例",
+            "trace_id": "current_trace_2",
+            "titles": ["标题"],
+            "title_count": 1,
+            "copywriting_length": 30,
+            "tag_count": 2,
+            "overall": 88,
+            "decision": "approve",
+            "issues_count": 0,
+            "suggestions_count": 1,
+            "publish_gate_enabled": False,
+            "baseline_passed": True,
+            "baseline_reason": "",
+            "error": None,
+        },
+    ]
+    previous = [{"case_id": "coffee_beginner", "overall": 90}]
+
+    annotated, comparison = compare_quality_trend(current, previous, max_score_drop=3)
+
+    assert comparison["passed"] is False
+    assert comparison["compared_count"] == 1
+    assert comparison["skipped_count"] == 1
+    assert comparison["failed_count"] == 1
+    assert annotated[0]["previous_overall"] == 90
+    assert annotated[0]["score_delta"] == -6
+    assert annotated[0]["trend_passed"] is False
+    assert annotated[0]["trend_reason"] == "score dropped 6 points (from 90 to 84)"
+    assert annotated[1]["previous_overall"] is None
+    assert annotated[1]["trend_passed"] is True
+    assert comparison["failures"][0]["case_id"] == "coffee_beginner"
+
+
 def test_report_writers_create_jsonl_and_markdown(tmp_path):
     results = [
         {
@@ -274,3 +354,31 @@ def test_cli_exits_nonzero_when_baseline_fails():
     assert completed.returncode == 1
     assert payload["baseline"]["passed"] is False
     assert payload["baseline"]["failed_count"] == 5
+
+
+def test_cli_exits_nonzero_when_trend_comparison_fails(tmp_path):
+    previous_path = tmp_path / "previous.jsonl"
+    previous_path.write_text(
+        json.dumps({"case_id": "coffee_beginner", "overall": 95}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_xhs_quality_eval.py",
+            "--compare-jsonl",
+            str(previous_path),
+            "--max-score-drop",
+            "3",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 1
+    assert payload["baseline"]["passed"] is True
+    assert payload["comparison"]["passed"] is False
+    assert payload["comparison"]["failed_count"] == 1
+    assert payload["results"][0]["trend_passed"] is False

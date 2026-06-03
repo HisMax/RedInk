@@ -12,8 +12,11 @@ from pathlib import Path
 from backend.services.xhs_quality_eval import (
     DEFAULT_ALLOWED_DECISIONS,
     DEFAULT_CASES_PATH,
+    DEFAULT_MAX_SCORE_DROP,
     DEFAULT_MIN_OVERALL,
     apply_quality_baseline,
+    compare_quality_trend,
+    load_previous_eval_results,
     load_quality_cases,
     run_quality_eval,
     write_jsonl_report,
@@ -28,6 +31,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jsonl", help="Optional path for JSONL report output.")
     parser.add_argument("--markdown", help="Optional path for Markdown report output.")
     parser.add_argument("--min-overall", type=int, default=DEFAULT_MIN_OVERALL, help="Minimum overall score.")
+    parser.add_argument(
+        "--compare-jsonl",
+        help="Optional previous JSONL or JSON evaluation report for trend comparison.",
+    )
+    parser.add_argument(
+        "--max-score-drop",
+        type=int,
+        default=DEFAULT_MAX_SCORE_DROP,
+        help="Maximum allowed score drop compared with previous report.",
+    )
     parser.add_argument(
         "--allow-decision",
         action="append",
@@ -48,6 +61,14 @@ def main() -> int:
         min_overall=args.min_overall,
         allowed_decisions=allowed_decisions,
     )
+    comparison = None
+    if args.compare_jsonl:
+        previous_results = load_previous_eval_results(args.compare_jsonl)
+        results, comparison = compare_quality_trend(
+            results,
+            previous_results,
+            max_score_drop=args.max_score_drop,
+        )
 
     if args.jsonl:
         write_jsonl_report(results, Path(args.jsonl))
@@ -59,10 +80,12 @@ def main() -> int:
         "case_count": len(cases),
         "success_count": sum(1 for result in results if result.get("error") is None),
         "baseline": baseline,
+        "comparison": comparison,
         "results": results,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    if args.report_only or baseline["passed"]:
+    comparison_passed = comparison is None or comparison["passed"]
+    if args.report_only or (baseline["passed"] and comparison_passed):
         return 0
     return 1
 
