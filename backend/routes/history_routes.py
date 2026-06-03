@@ -63,6 +63,9 @@ def create_history_blueprint():
             topic = data.get('topic')
             outline = data.get('outline')
             task_id = data.get('task_id')
+            trace_id = data.get('trace_id')
+            content = data.get('content')
+            quality = data.get('quality')
 
             if not topic or not outline:
                 return jsonify({
@@ -71,7 +74,14 @@ def create_history_blueprint():
                 }), 400
 
             history_service = get_history_service()
-            record_id = history_service.create_record(topic, outline, task_id)
+            record_id = history_service.create_record(
+                topic,
+                outline,
+                task_id,
+                trace_id=trace_id,
+                content=content,
+                quality=quality,
+            )
 
             return jsonify({
                 "success": True,
@@ -232,6 +242,10 @@ def create_history_blueprint():
             images = data.get('images')
             status = data.get('status')
             thumbnail = data.get('thumbnail')
+            trace_id = data.get('trace_id')
+            content = data.get('content')
+            quality = data.get('quality')
+            revision_entry = data.get('revision_entry')
 
             history_service = get_history_service()
             success = history_service.update_record(
@@ -239,7 +253,11 @@ def create_history_blueprint():
                 outline=outline,
                 images=images,
                 status=status,
-                thumbnail=thumbnail
+                thumbnail=thumbnail,
+                trace_id=trace_id,
+                content=content,
+                quality=quality,
+                revision_entry=revision_entry,
             )
 
             if not success:

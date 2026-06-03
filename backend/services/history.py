@@ -90,7 +90,10 @@ class HistoryService:
         self,
         topic: str,
         outline: Dict,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        content: Optional[Dict] = None,
+        quality: Optional[Dict] = None
     ) -> str:
         """
         创建新的历史记录
@@ -124,7 +127,16 @@ class HistoryService:
                 "generated": []  # 初始无生成图片
             },
             "status": RecordStatus.DRAFT,  # 初始状态：草稿
-            "thumbnail": None  # 初始无缩略图
+            "thumbnail": None,  # 初始无缩略图
+            "trace_id": trace_id,
+            "content": content or {
+                "titles": [],
+                "copywriting": "",
+                "tags": []
+            },
+            "quality": quality or None,
+            "revision_history": [],
+            "publish_gate": quality.get("publish_gate") if quality else None
         }
 
         # 保存完整记录到独立文件
@@ -142,7 +154,8 @@ class HistoryService:
             "status": RecordStatus.DRAFT,  # 索引中也记录状态
             "thumbnail": None,
             "page_count": len(outline.get("pages", [])),  # 预期页数
-            "task_id": task_id
+            "task_id": task_id,
+            "trace_id": trace_id
         })
         self._save_index(index)
 
@@ -198,7 +211,11 @@ class HistoryService:
         outline: Optional[Dict] = None,
         images: Optional[Dict] = None,
         status: Optional[str] = None,
-        thumbnail: Optional[str] = None
+        thumbnail: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        content: Optional[Dict] = None,
+        quality: Optional[Dict] = None,
+        revision_entry: Optional[Dict] = None
     ) -> bool:
         """
         更新历史记录
@@ -249,6 +266,22 @@ class HistoryService:
         if thumbnail is not None:
             record["thumbnail"] = thumbnail
 
+        # 更新内容质量闭环元数据
+        if trace_id is not None:
+            record["trace_id"] = trace_id
+
+        if content is not None:
+            record["content"] = content
+
+        if quality is not None:
+            record["quality"] = quality
+            if isinstance(quality, dict):
+                record["publish_gate"] = quality.get("publish_gate")
+
+        if revision_entry is not None:
+            record.setdefault("revision_history", [])
+            record["revision_history"].append(revision_entry)
+
         # 保存完整记录
         record_path = self._get_record_path(record_id)
         with open(record_path, "w", encoding="utf-8") as f:
@@ -275,6 +308,9 @@ class HistoryService:
                 # 更新任务 ID
                 if images is not None and images.get("task_id"):
                     idx_record["task_id"] = images.get("task_id")
+
+                if trace_id is not None:
+                    idx_record["trace_id"] = trace_id
 
                 break
 
