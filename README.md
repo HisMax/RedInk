@@ -241,6 +241,18 @@ Call the live revision advisor for those planned requests:
 make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1
 ```
 
+Write successful revision results back as derived case records:
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1 REVISION_APPEND_CASES=1
+```
+
+Apply a saved revision result file to the case library without another live call:
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_APPLY_RESULTS=reports/xhs-revision-results.jsonl REVISION_APPEND_CASES=1
+```
+
 ---
 
 ## 🔧 Configuration

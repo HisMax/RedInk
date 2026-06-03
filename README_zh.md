@@ -253,6 +253,18 @@ make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl
 make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1
 ```
 
+将成功的改稿结果作为派生案例回写案例库：
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_LIVE=1 REVISION_APPEND_CASES=1
+```
+
+不再次调用 live 服务，直接把已保存的 revision results 应用到案例库：
+
+```bash
+make plan-revisions REVISION_LIBRARY=reports/xhs-content-cases.jsonl REVISION_APPLY_RESULTS=reports/xhs-revision-results.jsonl REVISION_APPEND_CASES=1
+```
+
 ---
 
 ## 🔧 配置说明

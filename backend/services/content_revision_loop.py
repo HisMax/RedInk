@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from backend.services.content_case_library import SCHEMA_VERSION
+
 
 REQUEST_SCHEMA_VERSION = "xhs_revision_request.v1"
 RESULT_SCHEMA_VERSION = "xhs_revision_result.v1"
@@ -100,9 +102,11 @@ def run_revision_requests(
             results.append({
                 "schema_version": RESULT_SCHEMA_VERSION,
                 "request_id": request.get("request_id"),
+                "run_id": request.get("run_id"),
                 "source_record_id": request.get("source_record_id"),
                 "success": bool(result.get("success")),
                 "trace_id": result.get("trace_id"),
+                "revised_at": result.get("revised_at"),
                 "revision": result.get("revision"),
                 "error": result.get("error"),
             })
@@ -110,9 +114,11 @@ def run_revision_requests(
             results.append({
                 "schema_version": RESULT_SCHEMA_VERSION,
                 "request_id": request.get("request_id"),
+                "run_id": request.get("run_id"),
                 "source_record_id": request.get("source_record_id"),
                 "success": False,
                 "trace_id": revision_input.get("trace_id"),
+                "revised_at": None,
                 "revision": None,
                 "error": str(exc),
             })
@@ -129,6 +135,96 @@ def write_revision_results(results: Iterable[Dict[str, Any]], path: str | Path) 
             f.write(json.dumps(result, ensure_ascii=False) + "\n")
             count += 1
     return count
+
+
+def load_revision_results(path: str | Path) -> List[Dict[str, Any]]:
+    """Load revision results from JSONL."""
+    result_path = Path(path)
+    if not result_path.exists():
+        return []
+    with result_path.open("r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def build_revised_case_records(
+    records: Iterable[Dict[str, Any]],
+    revision_results: Iterable[Dict[str, Any]],
+    *,
+    run_id: str,
+    created_at: Optional[str] = None,
+    source: str = "xhs_revision_loop",
+) -> List[Dict[str, Any]]:
+    """Convert successful revision results into derived content case records."""
+    timestamp = created_at or _utc_now()
+    source_by_id = {record.get("record_id"): record for record in records}
+    revised_records = []
+    for result in revision_results:
+        if result.get("success") is not True:
+            continue
+
+        source_record_id = result.get("source_record_id")
+        source_record = source_by_id.get(source_record_id)
+        revision = result.get("revision") or {}
+        copywriting = revision.get("copywriting") or ""
+        if not source_record or not copywriting:
+            continue
+
+        request_id = result.get("request_id") or f"{run_id}:{source_record_id}"
+        source_quality = source_record.get("quality") or {}
+        revision_summary = _as_list(revision.get("revision_summary"))
+        revised_records.append({
+            "schema_version": SCHEMA_VERSION,
+            "record_id": f"{request_id}:revised",
+            "run_id": run_id,
+            "source": source,
+            "created_at": timestamp,
+            "case": dict(source_record.get("case") or {}),
+            "content": {
+                "titles": _as_list(revision.get("titles")),
+                "copywriting": copywriting,
+                "tags": _as_list(revision.get("tags")),
+            },
+            "quality": {
+                "trace_id": result.get("trace_id"),
+                "overall": None,
+                "decision": "pending_re_evaluation",
+                "issues_count": 0,
+                "suggestions_count": len(revision_summary),
+                "baseline_passed": None,
+                "baseline_reason": "",
+                "trend_passed": None,
+                "trend_reason": "",
+                "error": result.get("error"),
+            },
+            "human_review": _default_human_review(),
+            "revision_meta": {
+                "source_record_id": source_record_id,
+                "request_id": request_id,
+                "source_quality_trace_id": source_quality.get("trace_id"),
+                "revision_trace_id": result.get("trace_id"),
+                "revised_at": result.get("revised_at") or timestamp,
+                "revision_summary": revision_summary,
+            },
+        })
+    return revised_records
+
+
+def apply_revision_results_to_case_library(
+    records: Iterable[Dict[str, Any]],
+    revision_results: Iterable[Dict[str, Any]],
+    *,
+    run_id: str,
+    created_at: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Upsert derived revision case records into an existing case library."""
+    existing_records = list(records)
+    revised_records = build_revised_case_records(
+        existing_records,
+        revision_results,
+        run_id=run_id,
+        created_at=created_at,
+    )
+    return _upsert_case_records(existing_records, revised_records), revised_records
 
 
 def _trigger_reasons(record: Dict[str, Any]) -> List[str]:
@@ -188,6 +284,38 @@ def _build_quality_score(
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _default_human_review() -> Dict[str, Any]:
+    return {
+        "status": "unreviewed",
+        "publishable": None,
+        "viral_potential": None,
+        "issue_types": [],
+        "selected_title": None,
+        "edited_copywriting": None,
+        "notes": "",
+    }
+
+
+def _upsert_case_records(
+    records: List[Dict[str, Any]],
+    new_records: Iterable[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    merged = list(records)
+    index_by_record_id = {
+        record.get("record_id"): index
+        for index, record in enumerate(merged)
+        if record.get("record_id")
+    }
+    for record in new_records:
+        record_id = record.get("record_id")
+        if record_id in index_by_record_id:
+            merged[index_by_record_id[record_id]] = record
+            continue
+        index_by_record_id[record_id] = len(merged)
+        merged.append(record)
+    return merged
 
 
 def _as_list(value: Any) -> List[Any]:

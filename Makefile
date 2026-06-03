@@ -19,6 +19,9 @@ REVISION_RESULTS ?= $(REPORT_DIR)/xhs-revision-results.jsonl
 REVISION_RUN_ID ?= xhs_revision_loop
 REVISION_LIMIT ?=
 REVISION_LIVE ?= 0
+REVISION_APPLY_RESULTS ?=
+REVISION_APPEND_CASES ?= 0
+REVISION_REVISED_LIBRARY ?= $(REVISION_LIBRARY)
 PYTHON ?= uv run python
 
 EVAL_ARGS := --jsonl "$(EVAL_JSONL)" --markdown "$(EVAL_MARKDOWN)"
@@ -50,6 +53,14 @@ endif
 
 ifeq ($(REVISION_LIVE),1)
 REVISION_ARGS += --live --results-jsonl "$(REVISION_RESULTS)"
+endif
+
+ifneq ($(strip $(REVISION_APPLY_RESULTS)),)
+REVISION_ARGS += --apply-results-jsonl "$(REVISION_APPLY_RESULTS)"
+endif
+
+ifeq ($(REVISION_APPEND_CASES),1)
+REVISION_ARGS += --append-revised-cases --revised-case-library "$(REVISION_REVISED_LIBRARY)"
 endif
 
 .PHONY: eval-quality summarize-cases plan-revisions test-quality
