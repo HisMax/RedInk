@@ -132,7 +132,7 @@ def create_config_blueprint():
         测试服务商连接
 
         请求体：
-        - type: 服务商类型（google_genai/google_gemini/openai_compatible/image_api）
+        - type: 服务商类型（google_genai/google_gemini/openai_compatible/image_api/atlascloud_image）
         - provider_name: 服务商名称（用于从配置读取 API Key）
         - api_key: API Key（可选，若不提供则从配置读取）
         - base_url: Base URL（可选）
@@ -153,7 +153,7 @@ def create_config_blueprint():
                 return api_error_response(
                     validation_error("缺少 type 参数", "请选择服务商类型后再测试连接。")
                 )
-            if provider_type not in ['google_genai', 'google_gemini', 'openai_compatible', 'image_api']:
+            if provider_type not in ['google_genai', 'google_gemini', 'openai_compatible', 'image_api', 'atlascloud_image']:
                 return api_error_response(
                     validation_error(f"不支持的类型: {provider_type}", "请选择正确的服务商类型后再测试连接。")
                 )
@@ -324,6 +324,9 @@ def _test_provider_connection(provider_type: str, config: dict) -> dict:
     elif provider_type == 'image_api':
         return _test_image_api(config)
 
+    elif provider_type == 'atlascloud_image':
+        return _test_atlascloud_image(config)
+
     else:
         raise ValueError(f"不支持的类型: {provider_type}")
 
@@ -438,6 +441,62 @@ def _test_image_api(config: dict) -> dict:
         }
     else:
         raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+
+
+def _test_atlascloud_image(config: dict) -> dict:
+    """测试 Atlas Cloud Media API 连接和模型目录。"""
+    import requests
+
+    base_url = (config.get('base_url') or 'https://api.atlascloud.ai/api/v1').rstrip('/')
+    model = config.get('model') or 'bytedance/seedream-v5.0-lite'
+
+    response = requests.get(
+        f"{base_url}/models",
+        headers={'Authorization': f"Bearer {config['api_key']}"},
+        timeout=30,
+    )
+    if response.status_code != 200:
+        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise Exception(f"Atlas Cloud 模型目录响应不是合法 JSON: {response.text[:500]}") from exc
+
+    model_ids = _extract_model_ids(payload)
+    if model_ids and model not in model_ids:
+        return {
+            "success": True,
+            "warning": True,
+            "status": "warning",
+            "message": f"Atlas Cloud 连接成功，但模型目录中未找到 {model}。请确认模型名是否可用。"
+        }
+
+    return {
+        "success": True,
+        "message": "Atlas Cloud 连接成功！模型目录可访问，图片任务提交将在生成时执行。"
+    }
+
+
+def _extract_model_ids(payload) -> set[str]:
+    data = payload.get('data') if isinstance(payload, dict) else payload
+    if isinstance(data, dict):
+        for key in ['models', 'items', 'list']:
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+    if not isinstance(data, list):
+        return set()
+
+    model_ids = set()
+    for item in data:
+        if isinstance(item, dict):
+            model_id = item.get('model') or item.get('id') or item.get('name')
+            if isinstance(model_id, str):
+                model_ids.add(model_id)
+        elif isinstance(item, str):
+            model_ids.add(item)
+    return model_ids
 
 
 def _test_openai_chat_completion(config: dict, test_prompt: str) -> LlmSmokeResult:

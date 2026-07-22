@@ -214,6 +214,14 @@ class ImageService:
                         model=self.provider_config.get('model', 'nano-banana-2'),
                         reference_images=reference_images if reference_images else None,
                     )
+                elif self.provider_config.get('type') == 'atlascloud_image':
+                    logger.debug("  使用 Atlas Cloud 图片生成器")
+                    image_data = self.generator.generate_image(
+                        prompt=prompt,
+                        size=self.provider_config.get('size', '1728*2304'),
+                        output_format=self.provider_config.get('output_format', 'png'),
+                        model=self.provider_config.get('model', 'bytedance/seedream-v5.0-lite'),
+                    )
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")
                     image_data = self.generator.generate_image(
