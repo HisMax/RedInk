@@ -27,3 +27,15 @@ providers:
     base_url: https://your-api-endpoint.com
     model: dall-e-3
     high_concurrency: false
+
+  # Atlas Cloud Media API（异步图片生成）
+  atlascloud:
+    type: atlascloud_image
+    api_key: ak-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api.atlascloud.ai/api/v1
+    model: bytedance/seedream-v5.0-lite
+    size: "1728*2304"
+    output_format: png
+    poll_interval_seconds: 3
+    max_poll_attempts: 120
+    high_concurrency: false

@@ -89,7 +89,11 @@ def test_cached_generation_events_do_not_call_generator(tmp_path):
 
 
 class FakeGenerator:
+    def __init__(self):
+        self.calls = []
+
     def generate_image(self, **kwargs):
+        self.calls.append(kwargs)
         return b"image-bytes"
 
 
@@ -122,6 +126,34 @@ def test_single_image_generation_writes_history_immediately(tmp_path):
     record = service.get_record(record_id)
     assert record["images"]["generated"] == ["0.png"]
     assert record["status"] == "completed"
+
+
+def test_atlascloud_generation_uses_media_api_size(tmp_path):
+    image_service = ImageService.__new__(ImageService)
+    image_service.generator = FakeGenerator()
+    image_service.provider_config = {
+        "type": "atlascloud_image",
+        "model": "bytedance/seedream-v5.0-lite",
+        "size": "1728*2304",
+        "output_format": "png",
+    }
+    image_service.use_short_prompt = False
+    image_service.prompt_template = "{page_content}"
+    image_service.prompt_template_short = ""
+    image_service.current_task_dir = str(tmp_path / "task_1")
+    Path(image_service.current_task_dir).mkdir()
+    image_service.rate_limiter = ImageRateLimiter(max_concurrent=1, interval_seconds=0)
+    image_service.history_service = make_history_service(tmp_path)
+
+    result = image_service._generate_single_image(
+        {"index": 0, "type": "cover", "content": "cover"},
+        "task_1",
+    )
+
+    assert result == (0, True, "0.png", None)
+    assert image_service.generator.calls[0]["size"] == "1728*2304"
+    assert image_service.generator.calls[0]["output_format"] == "png"
+    assert image_service.generator.calls[0]["model"] == "bytedance/seedream-v5.0-lite"
 
 
 def test_retry_failed_images_creates_task_dir_and_merges_by_index(tmp_path):
