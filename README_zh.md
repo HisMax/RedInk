@@ -386,7 +386,7 @@ providers:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=HisMax/RedInk&type=Date)](https://star-history.com/#HisMax/RedInk&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=HisMax/RedInk&type=Date)](https://star-history.dera.page/#HisMax/RedInk&Date)
 
 ---
 
