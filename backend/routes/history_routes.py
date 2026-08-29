@@ -60,7 +60,13 @@ def create_history_blueprint():
         }
         """
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return api_error_response(
+                    validation_error("请求体必须是 JSON 对象", "请提供包含 topic 和 outline 的 JSON 对象。"),
+                    context={"endpoint": "/api/history"},
+                )
+
             topic = data.get('topic')
             outline = data.get('outline')
             task_id = data.get('task_id')

@@ -313,6 +313,20 @@ def test_outline_missing_topic_returns_structured_error(client):
     assert data["error_message"]
 
 
+def test_create_history_null_json_returns_structured_error(client):
+    response = client.post(
+        "/api/history",
+        data="null",
+        content_type="application/json",
+    )
+    data = response.get_json()
+
+    assert response.status_code == 400
+    assert data["success"] is False
+    assert data["error"]["code"] == "INVALID_REQUEST"
+    assert data["error"]["detail"] == "请求体必须是 JSON 对象"
+
+
 def test_sse_error_event_is_structured():
     data = _normalize_sse_error(
         "error",
