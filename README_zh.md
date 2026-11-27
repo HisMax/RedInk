@@ -6,22 +6,22 @@
 [![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-blue)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/histonemax/redink)](https://hub.docker.com/r/histonemax/redink)
 [![GitHub Release](https://img.shields.io/github/v/release/HisMax/RedInk?include_prereleases)](https://github.com/HisMax/RedInk/releases)
+[![观猹](https://img.shields.io/badge/%E8%A7%82%E7%8C%B9-%E7%8E%A9%20AI%EF%BC%8C%E4%B8%8A%E8%A7%82%E7%8C%B9-01B832)](https://watcha.cn/r/Nfzsir)
 
 <img src="images/2.png" alt="红墨 - 灵感一触即发 让创作从未如此简单" width="600"/>
 
-## 红墨官方站点上线啦，注册即送50体验积分！
+### 不想自己部署？直接用在线版 → [Redink.top](https://redink.top)
 
-## 注册需要邀请码！可以到 https://watcha.cn/square/discuss#post_id=1380 获取
+注册需要邀请码，到观猹的 [邀请码接力帖](https://watcha.cn/square/discuss#post_id=1380) 里领<br/>
+用过的朋友在 [观猹红墨产品页](https://watcha.cn/products/redink) 留了 100+ 条猹评，可以先看看大家怎么说
 
-<div align="center">
 <a href="https://redink.top">
   <img src="images/redink.png" alt="红墨在线体验" width="500" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"/>
 </a>
 
-#### [点击访问在线体验站 → Redink.top](https://redink.top)
+<sub>红墨由 [观猹](https://watcha.cn/r/Nfzsir) 友情支持 · 玩 AI，上观猹</sub>
 
-
-</div>
+<br/>
 
 <img src="images/showcase-grid.png" alt="使用红墨生成的各类小红书封面" width="700" style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"/>
 
@@ -372,6 +372,7 @@ providers:
 
 ## 交流讨论与赞助
 
+- **观猹社区**: [watcha.cn](https://watcha.cn/r/Nfzsir)，领邀请码、看猹评、聊红墨用法都在这
 - **GitHub Issues**: [https://github.com/HisMax/RedInk/issues](https://github.com/HisMax/RedInk/issues)
 
 ### 联系作者
@@ -434,6 +435,7 @@ providers:
 - [Claude Opus 4.5](https://www.anthropic.com/) - 智能代码辅助与开发支持
 - 图片生成服务提供商 - 惊艳的图片生成效果
 - [Linux.do](https://linux.do/) - 优秀的开发者社区
+- [观猹](https://watcha.cn/r/Nfzsir) - 红墨的友情支持方，邀请码发放和用户猹评都在这里
 
 ---
 
@@ -446,7 +448,7 @@ providers:
 - 📧 Email: histonemax@gmail.com
 - 💬 微信: Histone2024 （私人微信不解答任何技术问题）
 - 🐙 GitHub: [@HisMax](https://github.com/HisMax)
-- 
+- 🦡 观猹: 默子要早睡（[watcha.cn](https://watcha.cn/r/Nfzsir)）
 
 *"让 AI 帮我们做更有创造力的事"*
 

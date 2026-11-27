@@ -6,10 +6,18 @@
 [![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-blue)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/histonemax/redink)](https://hub.docker.com/r/histonemax/redink)
 [![GitHub Release](https://img.shields.io/github/v/release/HisMax/RedInk?include_prereleases)](https://github.com/HisMax/RedInk/releases)
+[![Watcha](https://img.shields.io/badge/Watcha-AI%20Community-01B832)](https://watcha.cn/r/Nfzsir)
 
 <img src="images/2_en.png" alt="RedInk - Inspiration at Your Fingertips, Making Creation Effortless" width="600"/>
 
 #### [Official Site → Redink.top](https://redink.top)
+
+Sign-up requires an invite code. Grab one from the [invite thread on Watcha](https://watcha.cn/square/discuss#post_id=1380).<br/>
+Curious what users think? Read 100+ reviews on [RedInk's Watcha page](https://watcha.cn/products/redink).
+
+<sub>RedInk is supported by [Watcha (观猹)](https://watcha.cn/r/Nfzsir), a Chinese community for AI products.</sub>
+
+<br/>
 
 <img src="images/showcase-grid-en.png" alt="Various social media covers generated with RedInk" width="700" style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"/>
 
@@ -359,6 +367,7 @@ If this project helps you, please give it a Star ⭐
 
 ## Community & Support
 
+- **Watcha (观猹)**: [watcha.cn](https://watcha.cn/r/Nfzsir): invite codes, user reviews, and RedInk discussions
 - **GitHub Issues**: [https://github.com/HisMax/RedInk/issues](https://github.com/HisMax/RedInk/issues)
 
 ### Contact the Author
@@ -421,6 +430,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 - [Claude Opus 4.5](https://www.anthropic.com/) — Intelligent code assistance and development support
 - Image generation service providers — Stunning image generation
 - [Linux.do](https://linux.do/) — Excellent developer community
+- [Watcha (观猹)](https://watcha.cn/r/Nfzsir) — Supports RedInk; home of our invite codes and user reviews
 
 ---
 
@@ -433,6 +443,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 - 📧 Email: histonemax@gmail.com
 - 💬 WeChat: Histone2024 (personal WeChat — no tech support)
 - 🐙 GitHub: [@HisMax](https://github.com/HisMax)
+- 🦡 Watcha: 默子要早睡 ([watcha.cn](https://watcha.cn/r/Nfzsir))
 
 *"Let AI do the creative work for us"*
 
