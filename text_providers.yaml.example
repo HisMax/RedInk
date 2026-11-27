@@ -32,3 +32,10 @@ providers:
     api_key: sk-xxxxxxxxxxxxxxxxxxxx
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     model: qwen-max
+
+  # Atlas Cloud LLM API（OpenAI 兼容）
+  atlascloud:
+    type: openai_compatible
+    api_key: ak-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api.atlascloud.ai/v1
+    model: qwen/qwen3.5-flash

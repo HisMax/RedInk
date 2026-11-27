@@ -133,7 +133,7 @@ class Config:
             )
 
         provider_type = provider_config.get('type', provider_name)
-        if provider_type in ['openai', 'openai_compatible', 'image_api']:
+        if provider_type in ['openai', 'openai_compatible', 'image_api', 'atlascloud_image']:
             if not provider_config.get('base_url'):
                 logger.error(f"服务商 [{provider_name}] 类型为 {provider_type}，但未配置 base_url")
                 raise ValueError(

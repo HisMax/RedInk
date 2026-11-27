@@ -303,6 +303,60 @@ def test_image_api_chat_test_does_not_treat_405_as_success(monkeypatch):
         })
 
 
+def test_atlascloud_image_test_checks_model_catalog(monkeypatch):
+    import requests
+    from backend.routes import config_routes
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        text = '{"data":[{"model":"bytedance/seedream-v5.0-lite"}]}'
+
+        def json(self):
+            return {"data": [{"model": "bytedance/seedream-v5.0-lite"}]}
+
+    def fake_get(url, headers=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    result = config_routes._test_provider_connection("atlascloud_image", {
+        "api_key": "ak-test",
+        "base_url": "https://api.atlascloud.ai/api/v1",
+        "model": "bytedance/seedream-v5.0-lite",
+    })
+
+    assert result["success"] is True
+    assert captured["url"] == "https://api.atlascloud.ai/api/v1/models"
+    assert captured["headers"]["Authorization"] == "Bearer ak-test"
+    assert captured["timeout"] == 30
+
+
+def test_config_test_accepts_atlascloud_image_type(client, monkeypatch):
+    from backend.routes import config_routes
+
+    def fake_test(provider_type, config):
+        assert provider_type == "atlascloud_image"
+        assert config["api_key"] == "ak-test"
+        return {"success": True, "message": "ok"}
+
+    monkeypatch.setattr(config_routes, "_test_provider_connection", fake_test)
+
+    response = client.post("/api/config/test", json={
+        "type": "atlascloud_image",
+        "api_key": "ak-test",
+        "base_url": "https://api.atlascloud.ai/api/v1",
+        "model": "bytedance/seedream-v5.0-lite",
+    })
+
+    assert response.status_code == 200
+    assert response.get_json()["success"] is True
+
+
 def test_outline_missing_topic_returns_structured_error(client):
     response = client.post("/api/outline", json={"topic": ""})
     data = response.get_json()
